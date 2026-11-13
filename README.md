@@ -29,7 +29,7 @@ unfoldx artifacts download <run_id>.video --out ./out --json
 
 The public contract lives in `cli/src/unfoldx_cli/openapi.json` and is shipped with the stdlib-only CLI package and shared by MCP.
 
-For MCP hosts: install `unfoldx-mcp` (`uv tool install unfoldx-mcp`) and register `unfoldx-mcp` as a stdio
+For MCP hosts: install `unfoldx-mcp` (`uv tool install unfoldx-mcp --with-executables-from unfoldx`, which also installs the `unfoldx` CLI used to log in) and register `unfoldx-mcp` as a stdio
 server; it uses the CLI's login. See `mcp/README.md`.
 
 ## Design principles
