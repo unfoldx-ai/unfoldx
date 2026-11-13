@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "unfoldx"
+version = "0.6.0"
+description = "UnfoldX CLI - delegate explainer videos to the UnfoldX main agent and follow them to the finished film."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+urls = { Homepage = "https://unfoldx.ai", Source = "https://github.com/unfoldx-ai/unfoldx", Issues = "https://github.com/unfoldx-ai/unfoldx/issues" }
+dependencies = []
+
+[project.optional-dependencies]
+keychain = ["keyring>=24"]
+
+[project.scripts]
+unfoldx = "unfoldx_cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unfoldx_cli"]

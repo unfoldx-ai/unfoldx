@@ -1,0 +1,2939 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "UnfoldX public API",
+    "version": "2.6.0",
+    "summary": "Delegate explainer videos to the UnfoldX main agent and follow them to the finished film.",
+    "description": "The single contract for the `unfoldx` CLI, the `unfoldx-mcp` server and any other client.\n\n* Every response is the `unfoldx.v2` envelope: `data` when `ok` is true, `error` otherwise.\n  Responses carry `Cache-Control: no-store`.\n* `error.type` is a closed set that clients map to exit codes; `error.code` is the precise reason.\n* Public ids only: workspace ids, `run_…`, `<run_id>.video|cover`, `mat_…`, `cred_…`.\n* A workspace is one main-agent conversation; a run is one message to it.\n* Writes run through the same services as the web. `POST /v2/runs` needs an `Idempotency-Key`\n  (the client's command id): the same key and body return the same run, a changed body is 409.\n* A route card is answered on the user's behalf only within the credential's budget; above it the\n  answer is `needs_input/approval_required` with the `approval_url` where the user confirms.\n* Publishing requires explicit publish:confirm scope and a current publish card.\n* Clients name themselves on every request with `X-Unfoldx-Client` (`cli` or `mcp`,\n  `#/components/parameters/UnfoldxClient`).\n"
+  },
+  "servers": [{"url": "https://dev.unfoldx.ai/api", "description": "development site (the public API opens here first)"}],
+  "security": [{"bearer": []}],
+  "paths": {
+    "/v2/auth/device": {
+      "post": {
+        "operationId": "deviceLoginBegin",
+        "summary": "Start a device login; the user approves it in the browser.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["client_name"],
+                "additionalProperties": false,
+                "properties": {
+                  "client_name": {"type": "string", "minLength": 1, "maxLength": 80, "description": "shown on the approval page"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "grant started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/DeviceGrant"}}}
+                  ]
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/Error"},
+          "429": {"$ref": "#/components/responses/Error"},
+          "503": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/auth/device/token": {
+      "post": {
+        "operationId": "deviceLoginToken",
+        "summary": "Exchange the device code once it is approved. Poll at `interval` seconds; back off by 5 s on `slow_down`.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["device_code"],
+                "additionalProperties": false,
+                "properties": {"device_code": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "`{status: pending}` until approved, then the token, shown exactly once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "oneOf": [
+                            {"type": "object", "required": ["status"], "properties": {"status": {"const": "pending"}}},
+                            {
+                              "allOf": [
+                                {"$ref": "#/components/schemas/Credential"},
+                                {
+                                  "type": "object",
+                                  "required": ["status", "access_token", "token_type"],
+                                  "properties": {
+                                    "status": {"const": "authorized"},
+                                    "access_token": {"type": "string", "pattern": "^ufx_[A-Za-z0-9_-]{43}$"},
+                                    "token_type": {"const": "Bearer"}
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/Error"},
+          "403": {"description": "authorization_denied", "$ref": "#/components/responses/Error"},
+          "410": {"description": "authorization_expired or authorization_consumed", "$ref": "#/components/responses/Error"},
+          "429": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/me": {
+      "get": {
+        "operationId": "me",
+        "summary": "The credential in use. Scope `capabilities:read`.",
+        "responses": {
+          "200": {"$ref": "#/components/responses/Credential"},
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"}
+        }
+      },
+      "delete": {
+        "operationId": "logout",
+        "summary": "Revoke the credential in use. Scope `capabilities:read`.",
+        "responses": {"200": {"$ref": "#/components/responses/Credential"}, "401": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/v2/capabilities": {
+      "get": {
+        "operationId": "capabilities",
+        "summary": "What this credential may do. Discovery only, not an authorization ticket. Scope `capabilities:read`.",
+        "responses": {
+          "200": {
+            "description": "capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["api", "min_client_version", "scopes", "budget", "operations", "routes", "skills"],
+                          "properties": {
+                            "api": {"const": "unfoldx.v2"},
+                            "min_client_version": {"type": "string", "examples": ["0.2.0"]},
+                            "scopes": {"type": "array", "items": {"$ref": "#/components/schemas/Scope"}},
+                            "budget": {"$ref": "#/components/schemas/Budget"},
+                            "operations": {"type": "array", "items": {"type": "string", "examples": ["GET /runs/{id}"]}},
+                            "routes": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {"route": {"type": "string"}, "label": {"type": "string"}}
+                              }
+                            },
+                            "skills": {
+                              "type": "array",
+                              "description": "The skill catalog the web lists: what to ask the main agent for. `says` is a phrasing to send as a run message.",
+                              "items": {"$ref": "#/components/schemas/Skill"}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/workspaces": {
+      "get": {
+        "operationId": "listWorkspaces",
+        "summary": "Workspaces ordered by creation time and public id, with signed cursor, title search and run-state filtering.",
+        "responses": {
+          "200": {
+            "description": "workspaces, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["workspaces", "next_cursor", "query"],
+                          "properties": {
+                            "workspaces": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": ["workspace_id", "web_url", "runs"],
+                                "properties": {
+                                  "workspace_id": {"type": "string"},
+                                  "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+                                  "title": {"type": ["string", "null"]},
+                                  "updated_at": {"$ref": "#/components/schemas/Time"},
+                                  "runs": {"type": "integer", "description": "number of runs"}
+                                }
+                              }
+                            },
+                            "next_cursor": {"type": ["string", "null"]},
+                            "query": {
+                              "type": "object",
+                              "required": ["q", "state", "limit"],
+                              "properties": {
+                                "q": {"type": "string"},
+                                "state": {"type": ["string", "null"]},
+                                "limit": {"type": "integer"}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "400": {"$ref": "#/components/responses/Error"}
+        },
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
+          {"name": "cursor", "in": "query", "schema": {"type": "string"}},
+          {"name": "q", "in": "query", "schema": {"type": "string", "maxLength": 200}},
+          {"name": "state", "in": "query", "schema": {"$ref": "#/components/schemas/RunState"}}
+        ]
+      }
+    },
+    "/v2/workspaces/{workspace_id}": {
+      "parameters": [{"name": "workspace_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+      "get": {
+        "operationId": "getWorkspace",
+        "summary": "A workspace and its runs. Scope `runs:read`. Other users' workspaces are 404.",
+        "responses": {
+          "200": {
+            "description": "workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["workspace_id", "web_url", "runs"],
+                          "properties": {
+                            "workspace_id": {"type": "string"},
+                            "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+                            "title": {"type": ["string", "null"]},
+                            "created_at": {"$ref": "#/components/schemas/Time"},
+                            "runs": {"type": "array", "items": {"$ref": "#/components/schemas/Run"}}
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/runs": {
+      "post": {
+        "operationId": "submitRun",
+        "summary": "Ask the main agent for a video: a new workspace, or a follow-up message in `workspace_id`. Scope `runs:create`. The analysis hold is taken as on the web.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{8,128}$"},
+            "description": "the client's command id; `GET /v2/commands/{key}` finds the run it started"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["goal"],
+                "properties": {
+                  "goal": {"type": "string", "minLength": 1, "maxLength": 10000},
+                  "urls": {"type": "array", "maxItems": 10, "items": {"type": "string", "format": "uri"}},
+                  "material_ids": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {"type": "string"},
+                    "description": "ready materials of this user"
+                  },
+                  "workspace_id": {"type": "string", "description": "follow up in this workspace"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/Accepted"}}}
+                  ]
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/Error"},
+          "401": {"$ref": "#/components/responses/Error"},
+          "402": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"},
+          "409": {"$ref": "#/components/responses/Error"},
+          "429": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/commands/{command_id}": {
+      "parameters": [{"name": "command_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+      "get": {
+        "operationId": "getCommand",
+        "summary": "The run a command id started (for a client that lost the response). Scope `runs:read`.",
+        "responses": {
+          "200": {
+            "description": "run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [{"$ref": "#/components/schemas/Ok"}, {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/runs/{run_id}/answers": {
+      "parameters": [{"$ref": "#/components/parameters/RunId"}],
+      "post": {
+        "operationId": "answerRun",
+        "summary": "Answer the run's route, storyboard or publish card. Scope `runs:answer` (publish cards also `publish:confirm`). A route whose hold exceeds the credential's per-run cap, or the last 24 hours' auto-approved holds plus this one exceed the daily cap, is 409 `needs_input/approval_required` with `details.approval_url`; nothing is held and the card stays open on the web.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["question_id", "answer"],
+                "properties": {"question_id": {"type": "string"}, "answer": {"$ref": "#/components/schemas/Answer"}}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["run"],
+                          "properties": {"run": {"$ref": "#/components/schemas/Run"}, "answer": {"type": "object"}}
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/Error"},
+          "401": {"$ref": "#/components/responses/Error"},
+          "402": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"},
+          "409": {"$ref": "#/components/responses/Error"},
+          "429": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/runs/{run_id}/cancel": {
+      "parameters": [{"$ref": "#/components/parameters/RunId"}],
+      "post": {
+        "operationId": "cancelRun",
+        "summary": "Stop the run; repeating it, or cancelling a finished run, returns its current state. Scope `runs:cancel`.",
+        "responses": {
+          "200": {
+            "description": "run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["run"],
+                          "properties": {"run": {"$ref": "#/components/schemas/Run"}}
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/materials/uploads": {
+      "post": {
+        "operationId": "createMaterialUpload",
+        "summary": "A ten-minute signed form to POST one file straight to object storage under the user's own key. Scope `materials:write`. Then call `/v2/materials/{id}/complete`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["filename", "size_bytes", "content_type"],
+                "properties": {
+                  "filename": {"type": "string", "minLength": 1, "maxLength": 255},
+                  "size_bytes": {"type": "integer", "minimum": 1, "maximum": 104857600},
+                  "content_type": {"type": "string", "examples": ["application/pdf"]}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "upload form",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "allOf": [
+                            {"$ref": "#/components/schemas/Material"},
+                            {
+                              "properties": {
+                                "upload": {
+                                  "type": "object",
+                                  "required": ["method", "url", "fields", "file_field", "expires_at"],
+                                  "properties": {
+                                    "method": {"const": "POST"},
+                                    "url": {"type": "string", "format": "uri"},
+                                    "fields": {"type": "object", "additionalProperties": {"type": "string"}},
+                                    "file_field": {"type": "string"},
+                                    "expires_at": {"$ref": "#/components/schemas/Time"}
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/Error"},
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "503": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/materials/{material_id}": {
+      "parameters": [{"$ref": "#/components/parameters/MaterialId"}],
+      "get": {
+        "operationId": "getMaterial",
+        "summary": "A material's state. Scope `materials:write`.",
+        "responses": {
+          "200": {
+            "description": "material",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/Material"}}}
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        },
+        "description": "Read an owned material. Requires materials:read."
+      }
+    },
+    "/v2/materials/{material_id}/complete": {
+      "parameters": [{"$ref": "#/components/parameters/MaterialId"}],
+      "post": {
+        "operationId": "completeMaterialUpload",
+        "summary": "Check the stored object's size and mark the material ready; 409 `upload_incomplete` otherwise.",
+        "responses": {
+          "200": {
+            "description": "material",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/Material"}}}
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"},
+          "409": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/runs/{run_id}": {
+      "parameters": [{"$ref": "#/components/parameters/RunId"}],
+      "get": {
+        "operationId": "getRun",
+        "summary": "State, the open question and settlement. Scope `runs:read`.",
+        "responses": {
+          "200": {
+            "description": "run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [{"$ref": "#/components/schemas/Ok"}, {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/runs/{run_id}/events": {
+      "parameters": [{"$ref": "#/components/parameters/RunId"}],
+      "get": {
+        "operationId": "getRunEvents",
+        "summary": "Events after a cursor. `seq` increases but is not contiguous; dedupe by `seq`.\nThe server answers at once; clients poll. Scope `runs:read`.\n",
+        "parameters": [
+          {"name": "after_seq", "in": "query", "schema": {"type": "integer", "minimum": 0, "default": 0}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+        ],
+        "responses": {
+          "200": {
+            "description": "events page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["events", "next_seq", "state"],
+                          "properties": {
+                            "events": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": ["seq", "type"],
+                                "properties": {
+                                  "seq": {"type": "integer"},
+                                  "occurred_at": {"$ref": "#/components/schemas/Time"},
+                                  "type": {"enum": ["progress", "question", "result"]},
+                                  "stage": {"type": ["string", "null"]},
+                                  "text": {"type": "string"},
+                                  "question_id": {"type": "string"},
+                                  "contract": {"type": "string"}
+                                }
+                              }
+                            },
+                            "next_seq": {"type": "integer", "description": "pass as after_seq next time"},
+                            "state": {"$ref": "#/components/schemas/RunState"}
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/Error"},
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/runs/{run_id}/questions": {
+      "parameters": [{"$ref": "#/components/parameters/RunId"}],
+      "get": {
+        "operationId": "getRunQuestions",
+        "summary": "Open confirmation cards, oldest first. Scope `runs:read`.",
+        "responses": {
+          "200": {
+            "description": "questions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["questions"],
+                          "properties": {"questions": {"type": "array", "items": {"$ref": "#/components/schemas/Question"}}}
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/runs/{run_id}/result": {
+      "parameters": [{"$ref": "#/components/parameters/RunId"}],
+      "get": {
+        "operationId": "getRunResult",
+        "summary": "The film's artifacts. `ready` is false until the run completes; earlier films are never returned. Scope `runs:read`.",
+        "responses": {
+          "200": {
+            "description": "result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["run_id", "workspace_id", "state", "ready", "artifacts", "message"],
+                          "properties": {
+                            "run_id": {"type": "string"},
+                            "state": {"$ref": "#/components/schemas/RunState"},
+                            "ready": {
+                              "type": "boolean",
+                              "description": "Whether this message delivered a new film; completed alone is not delivery"
+                            },
+                            "workspace_id": {"type": "string"},
+                            "message": {
+                              "type": "string",
+                              "description": "User-facing assistant reply with credential/URL-query redaction"
+                            },
+                            "title": {"type": ["string", "null"]},
+                            "artifacts": {"type": "array", "items": {"$ref": "#/components/schemas/Artifact"}}
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/runs/{run_id}/usage": {
+      "parameters": [{"$ref": "#/components/parameters/RunId"}],
+      "get": {
+        "operationId": "getRunUsage",
+        "summary": "Credits held and charged. Missing evidence is never shown as 0. Scope `usage:read`.",
+        "responses": {
+          "200": {
+            "description": "usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["run_id", "settlement_status", "usage_complete", "charged_credits", "holds"],
+                          "properties": {
+                            "run_id": {"type": "string"},
+                            "settlement_status": {"type": "string", "examples": ["not_started", "pending", "settled", "refunded"]},
+                            "usage_complete": {"type": "boolean"},
+                            "charged_credits": {"type": ["integer", "null"]},
+                            "delivered": {"type": "boolean"},
+                            "holds": {
+                              "description": "Current reservations before settlement; final locked/settled/refunded amounts afterwards.",
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {"status": {"type": "string"}, "credits": {"type": ["integer", "null"]}}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/artifacts/{artifact_id}": {
+      "parameters": [{"$ref": "#/components/parameters/ArtifactId"}],
+      "get": {
+        "operationId": "getArtifact",
+        "summary": "Artifact metadata. Scope `artifacts:read`.",
+        "responses": {
+          "200": {
+            "description": "artifact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "allOf": [{"$ref": "#/components/schemas/Artifact"}, {"properties": {"run_id": {"type": "string"}}}]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/artifacts/{artifact_id}/access": {
+      "parameters": [{"$ref": "#/components/parameters/ArtifactId"}],
+      "post": {
+        "operationId": "accessArtifact",
+        "summary": "A signed download link valid for `expires_in` seconds; re-authorized on every call. Scope `artifacts:read`.",
+        "responses": {
+          "200": {
+            "description": "link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["artifact_id", "url", "filename", "expires_in", "expires_at"],
+                          "properties": {
+                            "artifact_id": {"type": "string"},
+                            "url": {"type": "string", "format": "uri"},
+                            "filename": {"type": "string"},
+                            "expires_in": {"type": "integer", "examples": [3600]},
+                            "expires_at": {"$ref": "#/components/schemas/Time"}
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"},
+          "404": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/materials": {
+      "get": {
+        "operationId": "materials_list",
+        "summary": "Search your material library; follow next_page until null.",
+        "description": "Search your material library; follow next_page until null.",
+        "x-cli": ["materials", "list"],
+        "x-mcp": "unfoldx_materials_list",
+        "x-scope": "materials:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [
+          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}
+          },
+          {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "type", "in": "query", "required": false, "schema": {"enum": ["all", "document", "image", "media"]}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/ResourcePage"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/catalogs/styles": {
+      "get": {
+        "operationId": "catalog_styles",
+        "summary": "List available styles; use returned IDs, never guess.",
+        "description": "List available styles; use returned IDs, never guess.",
+        "x-cli": ["catalogs", "styles"],
+        "x-mcp": "unfoldx_catalog_styles",
+        "x-scope": "capabilities:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/CatalogStyles"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/catalogs/voices": {
+      "get": {
+        "operationId": "catalog_voices",
+        "summary": "List available voices; use returned IDs, never guess.",
+        "description": "List available voices; use returned IDs, never guess.",
+        "x-cli": ["catalogs", "voices"],
+        "x-mcp": "unfoldx_catalog_voices",
+        "x-scope": "capabilities:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {"enum": ["Chinese", "English"], "default": "Chinese"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/CatalogVoices"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/catalogs/covers": {
+      "get": {
+        "operationId": "catalog_covers",
+        "summary": "List available covers; use returned IDs, never guess.",
+        "description": "List available covers; use returned IDs, never guess.",
+        "x-cli": ["catalogs", "covers"],
+        "x-mcp": "unfoldx_catalog_covers",
+        "x-scope": "capabilities:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/CatalogCovers"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/works": {
+      "get": {
+        "operationId": "works_list",
+        "summary": "List finished video versions, filtered by title or workspace.",
+        "description": "List finished video versions, filtered by title or workspace.",
+        "x-cli": ["works", "list"],
+        "x-mcp": "unfoldx_works_list",
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [
+          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}
+          },
+          {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "workspace_id", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/ResourcePage"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/works/{run_id}": {
+      "get": {
+        "operationId": "work_get",
+        "summary": "Read one immutable run version of a work.",
+        "description": "Read one immutable run version of a work.",
+        "x-cli": ["works", "show"],
+        "x-mcp": "unfoldx_work_get",
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["run_id", "workspace_id", "state", "ready", "artifacts", "message"],
+                          "properties": {
+                            "run_id": {"type": "string"},
+                            "state": {"$ref": "#/components/schemas/RunState"},
+                            "ready": {
+                              "type": "boolean",
+                              "description": "Whether this message delivered a new film; completed alone is not delivery"
+                            },
+                            "workspace_id": {"type": "string"},
+                            "message": {
+                              "type": "string",
+                              "description": "User-facing assistant reply with credential/URL-query redaction"
+                            },
+                            "title": {"type": ["string", "null"]},
+                            "artifacts": {"type": "array", "items": {"$ref": "#/components/schemas/Artifact"}}
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/works/{run_id}/exports": {
+      "get": {
+        "operationId": "work_exports",
+        "summary": "Export manifest: original subtitles, public storyboard, transcript and downloadable media; absent timings are never invented.",
+        "description": "Export manifest: original subtitles, public storyboard, transcript and downloadable media; absent timings are never invented.",
+        "x-cli": ["works", "exports"],
+        "x-mcp": "unfoldx_work_exports",
+        "x-scope": "artifacts:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/ExportManifest"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/works/{run_id}/share": {
+      "get": {
+        "operationId": "share_show",
+        "summary": "Read/create/revoke public sharing. A public share is visible outside your account.",
+        "description": "Read/create/revoke public sharing. A public share is visible outside your account.",
+        "x-cli": ["shares", "show"],
+        "x-mcp": "unfoldx_share_show",
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/Share"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      },
+      "post": {
+        "operationId": "share_create",
+        "summary": "Read/create/revoke public sharing. A public share is visible outside your account.",
+        "description": "Read/create/revoke public sharing. A public share is visible outside your account.",
+        "x-cli": ["shares", "create"],
+        "x-mcp": "unfoldx_share_create",
+        "x-scope": "share:write",
+        "x-idempotent": true,
+        "x-destructive": true,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/Share"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "boolean",
+                    "const": true,
+                    "description": "Explicit consent to this write/delete/publication; CLI --yes."
+                  }
+                },
+                "required": ["confirm"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "share_revoke",
+        "summary": "Read/create/revoke public sharing. A public share is visible outside your account.",
+        "description": "Read/create/revoke public sharing. A public share is visible outside your account.",
+        "x-cli": ["shares", "revoke"],
+        "x-mcp": "unfoldx_share_revoke",
+        "x-scope": "share:write",
+        "x-idempotent": true,
+        "x-destructive": true,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/Share"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "boolean",
+                    "const": true,
+                    "description": "Explicit consent to this write/delete/publication; CLI --yes."
+                  }
+                },
+                "required": ["confirm"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/runs/{run_id}/covers": {
+      "get": {
+        "operationId": "covers_status",
+        "summary": "Get cover generation state, candidates and selection.",
+        "description": "Get cover generation state, candidates and selection.",
+        "x-cli": ["covers", "status"],
+        "x-mcp": "unfoldx_covers_status",
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/CoverState"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      },
+      "post": {
+        "operationId": "covers_generate",
+        "summary": "Generate one cover per chosen layout (labels). Confirm the catalog price per cover; credential budgets apply.",
+        "description": "Generate one cover per chosen layout (labels). Confirm the catalog price per cover; credential budgets apply.",
+        "x-cli": ["covers", "generate"],
+        "x-mcp": "unfoldx_covers_generate",
+        "x-scope": "covers:write",
+        "x-idempotent": true,
+        "x-destructive": true,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "default": {"$ref": "#/components/responses/Error"},
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/CoverSubmission"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "command_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._:-]{8,128}$",
+                    "description": "Choose and save before submitting; reuse exactly on retries."
+                  },
+                  "platform": {"enum": ["douyin", "xiaohongshu", "wechat_official_account"]},
+                  "style_id": {"enum": ["auto", "impact", "minimal", "lifestyle", "tech"], "default": "auto"},
+                  "headline": {"type": "string", "minLength": 1, "maxLength": 120},
+                  "instructions": {"type": "string", "maxLength": 500},
+                  "labels": {"type": "array", "items": {"enum": ["A", "B", "C"]}, "minItems": 1, "maxItems": 3, "uniqueItems": true,
+                    "description": "Layouts to make, one cover each at the catalog credits_each: A 大字标题, B 主体特写, C 图解对比. CLI takes JSON, e.g. [\"A\", \"C\"]."},
+                  "confirm": {
+                    "type": "boolean",
+                    "const": true,
+                    "description": "Explicit consent to this write/delete/publication; CLI --yes."
+                  }
+                },
+                "required": ["command_id", "platform", "headline", "labels", "confirm"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/runs/{run_id}/covers/select": {
+      "post": {
+        "operationId": "cover_select",
+        "summary": "Select a returned cover candidate for this film.",
+        "description": "Select a returned cover candidate for this film.",
+        "x-cli": ["covers", "select"],
+        "x-mcp": "unfoldx_cover_select",
+        "x-scope": "covers:write",
+        "x-idempotent": false,
+        "x-destructive": false,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/CoverSelection"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {"cover_id": {"type": "string"}},
+                "required": ["cover_id"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/runs/{run_id}/speech-previews": {
+      "post": {
+        "operationId": "speech_preview",
+        "summary": "Audition one existing review scene; does not resume production. Read the current question and dictionary revision first.",
+        "description": "Audition one existing review scene; does not resume production. Read the current question and dictionary revision first.",
+        "x-cli": ["speech", "preview"],
+        "x-mcp": "unfoldx_speech_preview",
+        "x-scope": "speech:write",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [{"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "default": {"$ref": "#/components/responses/Error"},
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/SpeechSubmission"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "command_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._:-]{8,128}$",
+                    "description": "Choose and save before submitting; reuse exactly on retries."
+                  },
+                  "question_id": {"type": "string"},
+                  "scene_id": {"type": "string"},
+                  "text": {"type": "string", "minLength": 1, "maxLength": 4000},
+                  "instructions": {"type": "string", "maxLength": 1000},
+                  "dictionary_revision": {"type": "integer"}
+                },
+                "required": ["command_id", "question_id", "scene_id", "text", "dictionary_revision"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/runs/{run_id}/speech-previews/{job_id}": {
+      "get": {
+        "operationId": "speech_status",
+        "summary": "Read an owned audition status and signed audio link when completed.",
+        "description": "Read an owned audition status and signed audio link when completed.",
+        "x-cli": ["speech", "status"],
+        "x-mcp": "unfoldx_speech_status",
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [
+          {"name": "run_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/SpeechState"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/settings/preferences": {
+      "get": {
+        "operationId": "preferences_show",
+        "summary": "Read/replace preferences with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
+        "description": "Read/replace preferences with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
+        "x-cli": ["preferences", "show"],
+        "x-mcp": "unfoldx_preferences_show",
+        "x-scope": "settings:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/SettingsDocument"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      },
+      "put": {
+        "operationId": "preferences_update",
+        "summary": "Read/replace preferences with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
+        "description": "Read/replace preferences with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
+        "x-cli": ["preferences", "update"],
+        "x-mcp": "unfoldx_preferences_update",
+        "x-scope": "settings:write",
+        "x-idempotent": false,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/SettingsDocument"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {"type": "integer"},
+                  "identity": {"type": "object"},
+                  "notifications": {"type": "object"},
+                  "kits": {"type": "array", "items": {"type": "object"}},
+                  "active_kit": {"description": "id of a saved kit, or null"},
+                  "team": {"type": "object"}
+                },
+                "required": ["revision", "identity", "notifications", "kits", "active_kit", "team"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/settings/pronunciations": {
+      "get": {
+        "operationId": "pronunciations_show",
+        "summary": "Read/replace pronunciations with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
+        "description": "Read/replace pronunciations with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
+        "x-cli": ["pronunciations", "show"],
+        "x-mcp": "unfoldx_pronunciations_show",
+        "x-scope": "settings:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/SettingsDocument"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      },
+      "put": {
+        "operationId": "pronunciations_update",
+        "summary": "Read/replace pronunciations with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
+        "description": "Read/replace pronunciations with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
+        "x-cli": ["pronunciations", "update"],
+        "x-mcp": "unfoldx_pronunciations_update",
+        "x-scope": "settings:write",
+        "x-idempotent": false,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/SettingsDocument"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {"type": "integer"},
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {"term": {"type": "string"}, "replacement": {"type": "string"}},
+                      "required": ["term", "replacement"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["revision", "entries"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/brands": {
+      "get": {
+        "operationId": "brands_list",
+        "summary": "List your brand kits and their assets.",
+        "description": "List your brand kits and their assets.",
+        "x-cli": ["brands", "list"],
+        "x-mcp": "unfoldx_brands_list",
+        "x-scope": "brands:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/BrandList"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      },
+      "post": {
+        "operationId": "brand_create",
+        "summary": "Create a brand kit; requires existing brand entitlement.",
+        "description": "Create a brand kit; requires existing brand entitlement.",
+        "x-cli": ["brands", "create"],
+        "x-mcp": "unfoldx_brand_create",
+        "x-scope": "brands:write",
+        "x-idempotent": false,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "default": {"$ref": "#/components/responses/Error"},
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/Brand"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "is_default": {"type": "boolean"}},
+                "required": ["name"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/brands/{brand_id}": {
+      "patch": {
+        "operationId": "brand_update",
+        "summary": "Update an owned brand kit.",
+        "description": "Update an owned brand kit.",
+        "x-cli": ["brands", "update"],
+        "x-mcp": "unfoldx_brand_update",
+        "x-scope": "brands:write",
+        "x-idempotent": false,
+        "x-destructive": false,
+        "parameters": [{"name": "brand_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/Brand"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "is_default": {"type": "boolean"}, "settings": {"type": "object"}},
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/brands/{brand_id}/assets": {
+      "post": {
+        "operationId": "brand_asset_create",
+        "summary": "Add a logo/background from an owned uploaded image, or slogan/palette.",
+        "description": "Add a logo/background from an owned uploaded image, or slogan/palette.",
+        "x-cli": ["brand-assets", "create"],
+        "x-mcp": "unfoldx_brand_asset_create",
+        "x-scope": "brands:write",
+        "x-idempotent": false,
+        "x-destructive": false,
+        "parameters": [{"name": "brand_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+        "responses": {
+          "default": {"$ref": "#/components/responses/Error"},
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/BrandAsset"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {"enum": ["logo", "background", "slogan", "palette"]},
+                  "title": {"type": "string"},
+                  "material_id": {"type": "string"},
+                  "content": {"type": "string"},
+                  "metadata": {"type": "object"},
+                  "is_default": {"type": "boolean"}
+                },
+                "required": ["kind"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/brand-assets/{asset_id}": {
+      "patch": {
+        "operationId": "brand_asset_update",
+        "summary": "Update an owned brand asset.",
+        "description": "Update an owned brand asset.",
+        "x-cli": ["brand-assets", "update"],
+        "x-mcp": "unfoldx_brand_asset_update",
+        "x-scope": "brands:write",
+        "x-idempotent": false,
+        "x-destructive": false,
+        "parameters": [{"name": "asset_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/BrandAsset"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {"type": "string"},
+                  "content": {"type": "string"},
+                  "metadata": {"type": "object"},
+                  "is_default": {"type": "boolean"}
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/publishing/accounts": {
+      "get": {
+        "operationId": "publishing_accounts",
+        "summary": "List connected publishing accounts and enabled platforms; never returns login secrets.",
+        "description": "List connected publishing accounts and enabled platforms; never returns login secrets.",
+        "x-cli": ["publishing", "accounts"],
+        "x-mcp": "unfoldx_publishing_accounts",
+        "x-scope": "publishing:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/PublishingAccounts"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/publishing/drafts": {
+      "get": {
+        "operationId": "publishing_drafts",
+        "summary": "Page through publishing drafts, states, errors and next actions.",
+        "description": "Page through publishing drafts, states, errors and next actions.",
+        "x-cli": ["publishing", "drafts"],
+        "x-mcp": "unfoldx_publishing_drafts",
+        "x-scope": "publishing:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [
+          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}
+          },
+          {"name": "state", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/ResourcePage"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/publishing/drafts/{draft_id}": {
+      "get": {
+        "operationId": "publishing_draft",
+        "summary": "Read draft receipt, final link when recorded, and recovery action.",
+        "description": "Read draft receipt, final link when recorded, and recovery action.",
+        "x-cli": ["publishing", "show"],
+        "x-mcp": "unfoldx_publishing_draft",
+        "x-scope": "publishing:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [{"name": "draft_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/PublishingDraft"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/publishing/drafts/{draft_id}/retry": {
+      "post": {
+        "operationId": "publishing_retry",
+        "summary": "Requeue the same queued draft. Terminal/ambiguous failures require a new publish confirmation; never blindly upload twice.",
+        "description": "Requeue the same queued draft. Terminal/ambiguous failures require a new publish confirmation; never blindly upload twice.",
+        "x-cli": ["publishing", "retry"],
+        "x-mcp": "unfoldx_publishing_retry",
+        "x-scope": "publish:confirm",
+        "x-idempotent": true,
+        "x-destructive": true,
+        "parameters": [{"name": "draft_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/PublishingDraft"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "type": "boolean",
+                    "const": true,
+                    "description": "Explicit consent to this write/delete/publication; CLI --yes."
+                  }
+                },
+                "required": ["confirm"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/superfast/jobs": {
+      "post": {
+        "operationId": "superfast_submit",
+        "summary": "Create/edit a separate superfast job. Explicit opt-in scope; not metered in the credit ledger, not a free-service promise.",
+        "description": "Create/edit a separate superfast job. Explicit opt-in scope; not metered in the credit ledger, not a free-service promise.",
+        "x-cli": ["superfast", "submit"],
+        "x-mcp": "unfoldx_superfast_submit",
+        "x-scope": "superfast:create",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{8,128}$",
+              "description": "Choose and save before submitting; reuse exactly on retries."
+            }
+          }
+        ],
+        "responses": {
+          "default": {"$ref": "#/components/responses/Error"},
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/SuperfastSubmission"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chat": {"type": "string", "maxLength": 4000, "description": "Goal. Explicit numeric seconds/minutes (1–3600 seconds) become a planner duration budget."},
+                  "web_url": {"type": "string"},
+                  "material_id": {"type": "string"},
+                  "parent_job_id": {"type": "string"},
+                  "instruction": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "Edit the parent film in one sentence; only the changed shots re-render. The job returns reply, and a question or an edit superfast cannot make completes with reply and no film."},
+                  "slides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "narration": {"type": "string"}},
+                      "required": ["id", "narration"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/superfast/jobs/{job_id}": {
+      "get": {
+        "operationId": "superfast_status",
+        "summary": "Get superfast state, exact timing milestones and full storyboard. Use superfast_access to request a download after completion.",
+        "description": "Get superfast state, exact timing milestones and full storyboard. Use superfast_access to request a download after completion.",
+        "x-cli": ["superfast", "status"],
+        "x-mcp": "unfoldx_superfast_status",
+        "x-scope": "superfast:read",
+        "x-idempotent": true,
+        "x-destructive": false,
+        "parameters": [{"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {"$ref": "#/components/schemas/SuperfastJob"}
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    },
+    "/v2/superfast/jobs/{job_id}/access": {
+      "post": {
+        "operationId": "superfast_access",
+        "summary": "Get an entitled signed download link for a completed superfast film.",
+        "description": "Get an entitled signed download link for a completed superfast film. Requires artifacts:read; status alone never grants export rights.",
+        "x-cli": ["superfast", "access"],
+        "x-mcp": "unfoldx_superfast_access",
+        "x-scope": "artifacts:read",
+        "x-idempotent": false,
+        "x-destructive": false,
+        "parameters": [{"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {"const": "unfoldx.v2"},
+                    "ok": {"const": true},
+                    "request_id": {"type": ["string", "null"]},
+                    "data": {
+                      "type": "object",
+                      "required": ["job_id", "url", "filename", "expires_in", "billing"],
+                      "properties": {
+                        "job_id": {"type": "string"},
+                        "url": {"type": "string"},
+                        "filename": {"type": "string"},
+                        "expires_in": {"type": "integer"},
+                        "billing": {"type": "object"}
+                      }
+                    }
+                  },
+                  "required": ["schema", "ok", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {"$ref": "#/components/responses/Error"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "`ufx_` token from the device login; stored by the server only as a hash."
+      }
+    },
+    "parameters": {
+      "UnfoldxClient": {
+        "name": "X-Unfoldx-Client",
+        "in": "header",
+        "required": false,
+        "schema": {"type": "string", "enum": ["cli", "mcp"]},
+        "description": "the client sending the request: the `unfoldx` CLI or the `unfoldx-mcp` server; the platform shows each credential's connection state per client"
+      },
+      "RunId": {
+        "name": "run_id",
+        "in": "path",
+        "required": true,
+        "schema": {"type": "string", "pattern": "^run_[A-Za-z0-9_-]+$"}
+      },
+      "ArtifactId": {
+        "name": "artifact_id",
+        "in": "path",
+        "required": true,
+        "schema": {"type": "string", "pattern": "^run_[A-Za-z0-9_-]+\\.(video|cover)$"}
+      },
+      "MaterialId": {
+        "name": "material_id",
+        "in": "path",
+        "required": true,
+        "schema": {"type": "string", "pattern": "^mat_[A-Za-z0-9_-]+$"}
+      }
+    },
+    "responses": {
+      "Credential": {
+        "description": "credential",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {"$ref": "#/components/schemas/Ok"},
+                {"properties": {"data": {"$ref": "#/components/schemas/Credential"}}}
+              ]
+            }
+          }
+        }
+      },
+      "Error": {"description": "failure", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Failure"}}}}
+    },
+    "schemas": {
+      "Ok": {
+        "type": "object",
+        "required": ["schema", "ok", "data"],
+        "properties": {
+          "schema": {"const": "unfoldx.v2"},
+          "ok": {"const": true},
+          "request_id": {"type": ["string", "null"]},
+          "data": {"type": "object"}
+        }
+      },
+      "Failure": {
+        "type": "object",
+        "required": ["schema", "ok", "error"],
+        "properties": {
+          "schema": {"const": "unfoldx.v2"},
+          "ok": {"const": false},
+          "request_id": {"type": ["string", "null"]},
+          "error": {
+            "type": "object",
+            "required": ["type", "code", "message", "retryable"],
+            "properties": {
+              "type": {
+                "enum": [
+                  "invalid_request",
+                  "auth_failed",
+                  "quota_exceeded",
+                  "rate_limited",
+                  "needs_input",
+                  "policy_blocked",
+                  "generation_failed",
+                  "not_found",
+                  "server_error",
+                  "timeout",
+                  "usage",
+                  "environment"
+                ]
+              },
+              "code": {
+                "type": "string",
+                "examples": [
+                  "credential_invalid",
+                  "credential_revoked",
+                  "credential_expired",
+                  "insufficient_scope",
+                  "authorization_expired",
+                  "authorization_consumed",
+                  "authorization_denied",
+                  "slow_down",
+                  "not_found",
+                  "invalid_cursor",
+                  "internal_error",
+                  "command_id_required",
+                  "idempotency_conflict",
+                  "approval_required",
+                  "material_not_ready",
+                  "upload_incomplete",
+                  "insufficient_credits",
+                  "concurrent_generation_limit"
+                ]
+              },
+              "message": {"type": "string"},
+              "retryable": {"type": "boolean"},
+              "retry_after_sec": {"type": ["integer", "null"]},
+              "outcome": {"type": ["string", "null"]},
+              "details": {"type": ["object", "null"]}
+            }
+          }
+        }
+      },
+      "Time": {"type": ["string", "null"], "format": "date-time"},
+      "Scope": {
+        "enum": [
+          "capabilities:read",
+          "materials:write",
+          "runs:create",
+          "runs:read",
+          "runs:answer",
+          "runs:cancel",
+          "artifacts:read",
+          "usage:read",
+          "publish:confirm",
+          "materials:read",
+          "covers:write",
+          "speech:write",
+          "settings:read",
+          "settings:write",
+          "brands:read",
+          "brands:write",
+          "publishing:read",
+          "share:write",
+          "superfast:read",
+          "superfast:create"
+        ]
+      },
+      "Budget": {
+        "type": "object",
+        "required": ["route_credit_cap", "daily_credit_cap"],
+        "properties": {
+          "route_credit_cap": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "credits one production route may be confirmed for without the user"
+          },
+          "daily_credit_cap": {"type": "integer", "minimum": 0}
+        }
+      },
+      "Skill": {
+        "type": "object",
+        "required": ["id", "roles", "title", "says", "needs", "routes", "connection", "paid", "examples"],
+        "properties": {
+          "id": {"type": "string", "examples": ["cinematic_film"]},
+          "roles": {"type": "array", "items": {"enum": ["kai", "tan", "jiang", "chuan"]}},
+          "title": {"type": "string"},
+          "says": {"type": "string"},
+          "needs": {"type": "array", "items": {"type": "string"}, "description": "main-agent tools it relies on"},
+          "routes": {"type": "array", "items": {"type": "string"}},
+          "connection": {"enum": ["publisher", null], "description": "publisher: needs a connected publishing account"},
+          "paid": {"type": "boolean", "description": "some step it relies on is charged"},
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text"],
+              "properties": {
+                "text": {"type": "string"},
+                "title": {"type": "string"},
+                "poster": {"type": "string"},
+                "video": {"type": "string"}
+              }
+            }
+          }
+        }
+      },
+      "DeviceGrant": {
+        "type": "object",
+        "required": ["device_code", "user_code", "verification_uri", "verification_uri_complete", "expires_in", "interval"],
+        "properties": {
+          "device_code": {"type": "string"},
+          "user_code": {"type": "string", "pattern": "^[A-Z2-9]{4}-[A-Z2-9]{4}$"},
+          "verification_uri": {"type": "string", "format": "uri"},
+          "verification_uri_complete": {"type": "string", "format": "uri"},
+          "expires_in": {"type": "integer"},
+          "interval": {"type": "integer"}
+        }
+      },
+      "Credential": {
+        "type": "object",
+        "required": ["credential_id", "client_name", "scopes", "budget", "created_at", "expires_at", "revoked"],
+        "properties": {
+          "credential_id": {"type": "string", "pattern": "^cred_[0-9a-f]{16}$"},
+          "client_name": {"type": "string"},
+          "scopes": {"type": "array", "items": {"$ref": "#/components/schemas/Scope"}},
+          "budget": {"$ref": "#/components/schemas/Budget"},
+          "created_at": {"$ref": "#/components/schemas/Time"},
+          "expires_at": {"$ref": "#/components/schemas/Time"},
+          "last_used_at": {"$ref": "#/components/schemas/Time"},
+          "revoked": {"type": "boolean"}
+        }
+      },
+      "RunState": {"enum": ["queued", "running", "waiting_input", "completed", "failed", "cancelled"]},
+      "Run": {
+        "type": "object",
+        "required": ["run_id", "workspace_id", "web_url", "state", "question", "settlement_status"],
+        "properties": {
+          "run_id": {"type": "string"},
+          "workspace_id": {"type": "string"},
+          "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+          "state": {"$ref": "#/components/schemas/RunState"},
+          "created_at": {"$ref": "#/components/schemas/Time"},
+          "updated_at": {"$ref": "#/components/schemas/Time"},
+          "question": {"oneOf": [{"type": "null"}, {"$ref": "#/components/schemas/Question"}]},
+          "settlement_status": {"type": "string"},
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "next_action", "run_id"],
+            "properties": {
+              "code": {"type": "string"},
+              "message": {"type": "string"},
+              "next_action": {"type": "string"},
+              "run_id": {"type": "string"}
+            }
+          }
+        }
+      },
+      "Question": {
+        "type": "object",
+        "required": ["question_id", "contract", "text", "options", "approval_url", "answerable", "answer_schema", "answer_examples"],
+        "properties": {
+          "question_id": {"type": "string"},
+          "contract": {
+            "type": ["string", "null"],
+            "examples": ["unfoldx.route-choice.v2", "unfoldx.storyboard-review.v1", "unfoldx.publish-confirm.v3"]
+          },
+          "answerable": {"type": "boolean", "description": "false means this card is visible but requires the approval URL"},
+          "answer_schema": {"type": ["object", "boolean"], "description": "JSON Schema for this exact card; false means not answerable"},
+          "answer_examples": {"type": "array", "items": {"$ref": "#/components/schemas/Answer"}},
+          "text": {"type": "string"},
+          "storyboard": {
+            "type": "object",
+            "description": "Editable text only. Answer continue, or {action: narration_patch, patches: [{uid, exact_narration}], deleted_slides: [], inserted_slides: []}.",
+            "required": ["slides"],
+            "properties": {
+              "slides": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["uid", "scene_id", "title", "narration", "spoken_text", "visual_instruction"],
+                  "properties": {
+                    "uid": {"type": "string"},
+                    "scene_id": {"type": ["string", "null"]},
+                    "title": {"type": "string"},
+                    "narration": {"type": "string"},
+                    "spoken_text": {"type": "string", "description": "Narration without control markers for human review"},
+                    "visual_instruction": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "options": {
+            "type": "array",
+            "items": {"type": "object", "properties": {"label": {"type": "string"}, "value": {"type": ["string", "null"]}}}
+          },
+          "asked_at": {"$ref": "#/components/schemas/Time"},
+          "approval_url": {"type": "string", "format": "uri", "description": "where the user confirms on the web"},
+          "route_choice": {
+            "type": "object",
+            "description": "present on route-choice cards",
+            "properties": {
+              "recommended": {"type": ["string", "null"]},
+              "reason": {"type": ["string", "null"]},
+              "target_duration_seconds": {"type": ["integer", "null"]},
+              "angles": {
+                "type": "array",
+                "description": "present when the agent offers 2-3 explanation angles; the first is the recommended one, and the answer names one by angle_id",
+                "minItems": 2,
+                "maxItems": 3,
+                "items": {
+                  "type": "object",
+                  "required": ["id", "title", "pitch"],
+                  "properties": {
+                    "id": {"type": "string", "examples": ["angle-1"]},
+                    "title": {"type": "string"},
+                    "pitch": {"type": "string"}
+                  }
+                }
+              },
+              "routes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "route": {"type": "string"},
+                    "label": {"type": ["string", "null"]},
+                    "available": {"type": ["boolean", "null"]},
+                    "summary": {"type": ["string", "null"]},
+                    "unavailable_reason": {
+                      "type": ["string", "null"],
+                      "description": "Why the user cannot pick this route now, on a route with available=false."
+                    },
+                    "style_candidates": {
+                      "type": "array",
+                      "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}}}
+                    }
+                  }
+                }
+              },
+              "quotes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "route": {"type": "string"},
+                    "low": {"type": "integer"},
+                    "high": {"type": "integer"},
+                    "hold": {"type": "integer", "description": "credits held if this route is chosen"},
+                    "eta_minutes": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+                    "quote_ref": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "publish": {
+            "type": "object",
+            "description": "present on publish cards (unfoldx.publish-confirm.v3)",
+            "properties": {
+              "target": {
+                "enum": ["gallery", "douyin", "xiaohongshu", "mock"],
+                "description": "gallery publishes on unfoldx; the others save a draft in the user's connected account, which the user publishes on the platform (mock is the dev environment's stand-in site)"
+              },
+              "account": {
+                "type": ["object", "null"],
+                "description": "draft targets only, the connected account the draft is saved to",
+                "properties": {"account_id": {"type": "string"}, "name": {"type": "string"}}
+              },
+              "title": {"type": ["string", "null"]},
+              "description": {"type": ["string", "null"]},
+              "tags": {"type": "array", "items": {"type": "string"}},
+              "film": {
+                "type": ["object", "null"],
+                "description": "the film a confirmation publishes; if a newer film has been made since, the answer is 409 and the agent must ask again",
+                "properties": {
+                  "run_id": {"type": "string"},
+                  "artifact_id": {"type": "string", "description": "download it with POST /v2/artifacts/{artifact_id}/access"}
+                }
+              }
+            }
+          },
+          "cover": {"type": "object"}
+        }
+      },
+      "Artifact": {
+        "type": "object",
+        "required": ["artifact_id", "role", "filename"],
+        "properties": {"artifact_id": {"type": "string"}, "role": {"enum": ["video", "cover"]}, "filename": {"type": "string"}}
+      },
+      "Accepted": {
+        "type": "object",
+        "required": ["run", "idempotent_replay"],
+        "properties": {
+          "run": {"$ref": "#/components/schemas/Run"},
+          "idempotent_replay": {"type": "boolean", "description": "true when this command id had already started the run"}
+        }
+      },
+      "Material": {
+        "type": "object",
+        "required": ["material_id", "filename", "content_type", "size_bytes", "state"],
+        "properties": {
+          "material_id": {"type": "string"},
+          "filename": {"type": "string"},
+          "content_type": {"type": "string"},
+          "size_bytes": {"type": "integer"},
+          "state": {"enum": ["pending", "ready"]},
+          "created_at": {"$ref": "#/components/schemas/Time"}
+        }
+      },
+      "Answer": {
+        "description": "Use the question answer_schema for card-specific choices and answer_examples for valid actions.",
+        "oneOf": [
+          {"type": "string", "enum": ["continue", "publish", "cancel"]},
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["action", "route", "quote_ref", "execution_mode"],
+            "properties": {
+              "action": {"const": "choose_route"},
+              "route": {"type": "string"},
+              "quote_ref": {"type": "string"},
+              "execution_mode": {"enum": ["autonomous", "interactive"]},
+              "style_id": {"type": "string"},
+              "angle_id": {"type": "string"},
+              "tts_voice": {"type": "string"},
+              "note": {"type": "string"}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["action", "patches", "deleted_slides", "inserted_slides"],
+            "properties": {
+              "action": {"const": "narration_patch"},
+              "patches": {
+                "type": "array",
+                "maxItems": 40,
+                "items": {
+                  "type": "object",
+                  "required": ["uid"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "uid": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "scene_id": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "exact_title": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "exact_narration": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "visual_instruction": {"type": "string", "minLength": 1, "maxLength": 12000}
+                  },
+                  "anyOf": [
+                    {"required": ["exact_title"]},
+                    {"required": ["exact_narration"]},
+                    {"required": ["visual_instruction"]}
+                  ]
+                }
+              },
+              "deleted_slides": {
+                "type": "array",
+                "maxItems": 40,
+                "items": {
+                  "type": "object",
+                  "required": ["uid"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "uid": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "scene_id": {"type": "string", "minLength": 1, "maxLength": 12000}
+                  }
+                }
+              },
+              "inserted_slides": {
+                "type": "array",
+                "maxItems": 40,
+                "items": {
+                  "type": "object",
+                  "required": ["after_uid", "instruction"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "after_uid": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "after_scene_id": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "instruction": {"type": "string", "minLength": 1, "maxLength": 12000}
+                  }
+                }
+              },
+              "speech_preview_jobs": {"type": "array", "maxItems": 40, "uniqueItems": true, "items": {"type": "string"}}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["action", "title"],
+            "properties": {"action": {"const": "generate"}, "title": {"type": "string", "minLength": 1, "maxLength": 120}}
+          }
+        ]
+      },
+      "ResourcePage": {
+        "type": "object",
+        "properties": {
+          "items": {"type": "array", "items": {"type": "object"}},
+          "total": {"type": "integer"},
+          "page": {"type": "integer"},
+          "page_size": {"type": "integer"},
+          "next_page": {"type": ["integer", "null"]}
+        },
+        "required": ["items", "total", "page", "page_size", "next_page"],
+        "additionalProperties": false
+      },
+      "SettingsDocument": {
+        "type": "object",
+        "properties": {"revision": {"type": "integer"}},
+        "required": ["revision"],
+        "additionalProperties": true
+      },
+      "Brand": {
+        "type": "object",
+        "properties": {
+          "brand_kit_id": {"type": "integer"},
+          "name": {"type": "string"},
+          "is_default": {"type": "boolean"},
+          "assets": {"type": ["array", "null"], "items": {"type": "object"}}
+        },
+        "required": ["brand_kit_id", "name"],
+        "additionalProperties": true
+      },
+      "BrandList": {
+        "type": "object",
+        "properties": {
+          "can_use_brand_kit": {"type": "boolean"},
+          "kits": {"type": "array", "items": {"$ref": "#/components/schemas/Brand"}}
+        },
+        "required": ["can_use_brand_kit", "kits"],
+        "additionalProperties": false
+      },
+      "CatalogStyles": {
+        "type": "object",
+        "properties": {"styles": {"type": "array", "items": {"type": "object"}}},
+        "required": ["styles"],
+        "additionalProperties": true
+      },
+      "CatalogVoices": {
+        "type": "object",
+        "properties": {
+          "language": {"type": "string"},
+          "voices": {"type": "array", "items": {"type": "object"}},
+          "custom_voices": {"type": "array", "items": {"type": "object"}}
+        },
+        "required": ["language", "voices", "custom_voices"],
+        "additionalProperties": false
+      },
+      "CatalogCovers": {
+        "type": "object",
+        "properties": {
+          "platforms": {"type": "array", "items": {"type": "object"}},
+          "styles": {"type": "array", "items": {"type": "string"}},
+          "credits_each": {"type": "integer"},
+          "layouts": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}}, "required": ["id", "name"], "additionalProperties": false}}
+        },
+        "required": ["platforms", "styles", "credits_each", "layouts"],
+        "additionalProperties": false
+      },
+      "Share": {
+        "type": "object",
+        "properties": {"run_id": {"type": "string"}, "shared": {"type": "boolean"}, "url": {"type": ["string", "null"]}},
+        "required": ["run_id", "shared", "url"],
+        "additionalProperties": false
+      },
+      "CoverState": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string"},
+          "status": {"type": "string"},
+          "candidates": {"type": "array", "items": {"type": "object"}},
+          "selected_cover_id": {"type": ["string", "null"]},
+          "job_id": {"type": "string"}
+        },
+        "required": ["run_id", "status"],
+        "additionalProperties": true
+      },
+      "CoverSubmission": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string"},
+          "command_id": {"type": "string"},
+          "status": {"type": "string"},
+          "job_id": {"type": "string"}
+        },
+        "required": ["run_id", "command_id", "job_id", "status"],
+        "additionalProperties": true
+      },
+      "CoverSelection": {
+        "type": "object",
+        "properties": {"run_id": {"type": "string"}, "cover": {"type": "object"}, "receipt": {"type": "object"}},
+        "required": ["run_id", "cover", "receipt"],
+        "additionalProperties": false
+      },
+      "SpeechSubmission": {
+        "type": "object",
+        "properties": {"run_id": {"type": "string"}, "command_id": {"type": "string"}, "job_id": {"type": "string"}},
+        "required": ["run_id", "command_id", "job_id"],
+        "additionalProperties": false
+      },
+      "SpeechState": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string"},
+          "job_id": {"type": "string"},
+          "status": {"type": "string"},
+          "url": {"type": "string"}
+        },
+        "required": ["run_id", "job_id", "status"],
+        "additionalProperties": true
+      },
+      "PublishingAccounts": {
+        "type": "object",
+        "properties": {"accounts": {"type": "array", "items": {"type": "object"}}, "platforms": {}},
+        "required": ["accounts", "platforms"],
+        "additionalProperties": false
+      },
+      "PublishingDraft": {
+        "type": "object",
+        "properties": {
+          "draft_id": {"type": "string"},
+          "status": {"type": "string"},
+          "retryable": {"type": "boolean"},
+          "next_action": {"type": "string"},
+          "published_url": {"type": ["string", "null"], "description": "Validated platform-returned publication link, or null. Acceptance is not moderation approval or proof of public visibility."}
+        },
+        "required": ["draft_id", "status", "retryable", "next_action", "published_url"],
+        "additionalProperties": true
+      },
+      "ExportFile": {
+        "type": "object",
+        "properties": {
+          "role": {"type": "string"},
+          "filename": {"type": "string"},
+          "url": {"type": "string"},
+          "content": {"type": "string"},
+          "derived_from": {"type": "string"},
+          "includes_music": {"type": "boolean"},
+          "source": {"type": "string"}
+        },
+        "required": ["role", "filename"],
+        "additionalProperties": false
+      },
+      "ExportManifest": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string"},
+          "metadata": {"type": "object"},
+          "files": {"type": "array", "items": {"$ref": "#/components/schemas/ExportFile"}},
+          "unavailable": {"type": "array", "items": {"type": "string"}},
+          "note": {"type": "string"}
+        },
+        "required": ["run_id", "metadata", "files", "unavailable", "note"],
+        "additionalProperties": false
+      },
+      "SuperfastSubmission": {
+        "type": "object",
+        "properties": {
+          "job_id": {"type": "string"},
+          "command_id": {"type": "string"},
+          "billing": {
+            "type": "object",
+            "properties": {"status": {"const": "not_metered"}, "message": {"type": "string"}},
+            "required": ["status"],
+            "additionalProperties": true
+          }
+        },
+        "required": ["job_id", "command_id", "billing"],
+        "additionalProperties": false
+      },
+      "SuperfastJob": {
+        "type": "object",
+        "properties": {
+          "job_id": {"type": "string"},
+          "status": {"type": "string"},
+          "duration": {"oneOf": [{"type": "null"}, {"$ref": "#/components/schemas/FilmDuration"}]},
+          "billing": {
+            "type": "object",
+            "properties": {"status": {"const": "not_metered"}},
+            "required": ["status"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["job_id", "status", "billing"],
+        "additionalProperties": true
+      },
+      "FilmDuration": {
+        "type": "object",
+        "description": "Measured duration is a soft-target fact. The caller decides whether to revise; deviation never fails the job.",
+        "properties": {
+          "duration_seconds": {"type": ["number", "null"]},
+          "target_duration_seconds": {"type": ["number", "null"]},
+          "delta_ratio": {"type": ["number", "null"]},
+          "duration_warning": {"type": "string"},
+          "duration_note": {"type": "string"}
+        },
+        "required": ["duration_seconds", "target_duration_seconds", "delta_ratio"],
+        "additionalProperties": false
+      },
+      "LocalExport": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string"},
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {"type": "string"},
+                "path": {"type": "string"},
+                "bytes": {"type": "integer"},
+                "sha256": {"type": "string"}
+              },
+              "required": ["role", "path", "bytes", "sha256"],
+              "additionalProperties": false
+            }
+          },
+          "unavailable": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["run_id", "files", "unavailable"],
+        "additionalProperties": false
+      },
+      "BrandAsset": {
+        "type": "object",
+        "properties": {"brand_asset_id": {"type": "integer"}, "kind": {"type": "string"}},
+        "required": ["brand_asset_id", "kind"],
+        "additionalProperties": true
+      }
+    }
+  },
+  "x-local-tools": {
+    "unfoldx_work_export": {
+      "description": "Download a work as video, cover, exact subtitles, storyboard, transcript, mixed audio or ZIP. Uses local ffmpeg only for derived audio; no invented subtitle times.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string"},
+          "format": {"enum": ["video", "cover", "subtitles", "storyboard", "transcript", "audio", "zip"]},
+          "out": {"type": "string"},
+          "overwrite": {"type": "boolean"}
+        },
+        "required": ["run_id", "format", "out"],
+        "additionalProperties": false
+      },
+      "output": {"$ref": "#/components/schemas/LocalExport"}
+    }
+  }
+}

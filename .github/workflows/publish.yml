@@ -1,0 +1,44 @@
+# PyPI trusts this workflow and the "pypi" environment (Trusted Publishing); no token is stored.
+name: Publish unfoldx to PyPI
+
+on:
+  push:
+    tags: ['unfoldx-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tag matches both package versions
+        run: |
+          tag="${GITHUB_REF_NAME#unfoldx-v}"
+          for p in cli mcp; do
+            v=$(sed -n 's/^version = "\(.*\)"/\1/p' $p/pyproject.toml)
+            [ "$v" = "$tag" ] || { echo "$p is $v, tag is $tag"; exit 1; }
+          done
+          grep -q "\"unfoldx==$tag\"" mcp/pyproject.toml || { echo "unfoldx-mcp does not pin unfoldx==$tag"; exit 1; }
+      - run: uv run --project cli --with pytest pytest cli/tests -q
+      - run: uv run --project mcp pytest mcp/tests -q
+      - run: uv build cli --out-dir dist && uv build mcp --out-dir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
