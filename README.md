@@ -10,6 +10,7 @@ server and agent skills. No engine internals.
 ```
 ├── cli/              # `unfoldx` CLI — stdlib-only HTTPS client (PyPI: unfoldx)
 ├── mcp/              # `unfoldx-mcp` — stdio MCP server over the same client (PyPI: unfoldx-mcp)
+├── npm/              # `npx unfoldx-mcp install` — adds the server to local AI tools (npm: unfoldx-mcp)
 ├── skills/           # Agent skills (Claude Code etc.) wrapping the CLI
 └── docs/             # CLI reference
 ```
@@ -29,7 +30,9 @@ unfoldx artifacts download <run_id>.video --out ./out --json
 
 The public contract lives in `cli/src/unfoldx_cli/openapi.json` and is shipped with the stdlib-only CLI package and shared by MCP.
 
-For MCP hosts: install `unfoldx-mcp` (`uv tool install unfoldx-mcp --with-executables-from unfoldx`, which also installs the `unfoldx` CLI used to log in) and register `unfoldx-mcp` as a stdio
+For MCP hosts, one command installs the server, logs in and adds it to Claude Code, Codex,
+Cursor, Gemini CLI, Qwen Code and Kimi Code: `npx -y unfoldx-mcp install` (see `npm/README.md`).
+By hand: install `unfoldx-mcp` (`uv tool install unfoldx-mcp --with-executables-from unfoldx`, which also installs the `unfoldx` CLI used to log in) and register `unfoldx-mcp` as a stdio
 server; it uses the CLI's login. See `mcp/README.md`.
 
 ## Design principles

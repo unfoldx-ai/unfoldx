@@ -1,0 +1,15 @@
+{
+  "name": "unfoldx-mcp",
+  "version": "0.6.0",
+  "description": "One command to install the UnfoldX MCP server and add it to Claude Code, Codex, Cursor, Gemini CLI, Qwen Code and Kimi Code.",
+  "type": "module",
+  "bin": { "unfoldx-mcp": "bin/unfoldx-mcp.js" },
+  "files": ["bin", "src", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test" },
+  "license": "Apache-2.0",
+  "homepage": "https://unfoldx.ai",
+  "repository": { "type": "git", "url": "git+https://github.com/unfoldx-ai/unfoldx.git", "directory": "npm" },
+  "bugs": "https://github.com/unfoldx-ai/unfoldx/issues",
+  "keywords": ["mcp", "unfoldx", "claude-code", "cursor", "codex"]
+}
