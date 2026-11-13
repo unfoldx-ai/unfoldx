@@ -6,7 +6,7 @@ CLI (`unfoldx login`); the server reads that credential for the same API base on
 every call, so it picks up a new login without a restart. It never prints the token.
 
 ```bash
-uv tool install unfoldx-mcp            # or: pip install unfoldx-mcp
+uv tool install unfoldx-mcp --with-executables-from unfoldx   # or: pip install unfoldx-mcp
 unfoldx login                          # approve in the browser
 claude mcp add unfoldx -- unfoldx-mcp  # any MCP host that launches stdio servers
 codex mcp add unfoldx -- unfoldx-mcp   # Codex
