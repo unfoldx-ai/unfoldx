@@ -1,4 +1,4 @@
-# PyPI trusts this workflow and the "pypi" environment (Trusted Publishing); no token is stored.
+# PyPI trusts this workflow with the "pypi" (unfoldx) and "pypi-mcp" (unfoldx-mcp) environments; no token is stored.
 name: Publish unfoldx to PyPI
 
 on:
@@ -24,13 +24,14 @@ jobs:
           grep -q "\"unfoldx==$tag\"" mcp/pyproject.toml || { echo "unfoldx-mcp does not pin unfoldx==$tag"; exit 1; }
       - run: uv run --project cli --with pytest pytest cli/tests -q
       - run: uv run --project mcp pytest mcp/tests -q
-      - run: uv build cli --out-dir dist && uv build mcp --out-dir dist
+      - run: uv build cli --out-dir dist/cli && uv build mcp --out-dir dist/mcp
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
 
-  publish:
+  # PyPI lets one pending trusted publisher (repo + workflow + environment) create only one project.
+  publish-cli:
     needs: build
     runs-on: ubuntu-latest
     environment: pypi
@@ -42,3 +43,20 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/cli/
+
+  publish-mcp:
+    needs: publish-cli
+    runs-on: ubuntu-latest
+    environment: pypi-mcp
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/mcp/
