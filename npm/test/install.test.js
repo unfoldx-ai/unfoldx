@@ -16,14 +16,14 @@ function fakeTool(dir, name, body = '') {
   chmodSync(path, 0o755);
 }
 
-function setup({ tools = [], uv = true, loggedIn = false, dirs = [], failing = [] } = {}) {
+function setup({ tools = [], uv = true, loggedIn = false, dirs = [], failing = [], binDir } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'unfoldx-npx-'));
   const home = join(root, 'home');
   const bin = join(root, 'bin');
   const toolBin = join(root, 'uv-tools', 'bin');
   for (const dir of [home, bin, toolBin]) mkdirSync(dir, { recursive: true });
   for (const dir of dirs) mkdirSync(join(home, dir), { recursive: true });
-  if (uv) fakeTool(bin, 'uv', `[ "$1 $2 $3" = "tool dir --bin" ] && echo "${toolBin}"`);
+  if (uv) fakeTool(bin, 'uv', `[ "$1 $2 $3" = "tool dir --bin" ] && echo "uv warning" >&2 && echo "${binDir ?? toolBin}"`);
   fakeTool(toolBin, 'unfoldx', `[ "$1" = "whoami" ] && exit ${loggedIn ? 0 : 3}`);
   fakeTool(toolBin, 'unfoldx-mcp');
   for (const name of tools) fakeTool(bin, name, failing.includes(name) && '[ "$2" = "add" ] && exit 1' || '');
@@ -132,4 +132,13 @@ test('a tool that refuses the server fails the run and says which one', () => {
   assert.match(out, /Claude Code/);
   assert.ok(calls.some(line => line.startsWith('codex mcp add')), 'the other tools are still configured');
   assert.ok(!out.includes(KEY));
+});
+
+test('a uv bin directory without the tools fails before any tool is touched', () => {
+  const ctx = setup({ binDir: '/nowhere', dirs: ['.cursor'] });
+  const { code, out, calls } = run(ctx, ['install', '--client', 'cursor', '--api-base', API]);
+  assert.equal(code, 1);
+  assert.match(out, /uv tool dir --bin/);
+  assert.ok(!calls.some(line => line.startsWith('unfoldx ')), calls.join('\n'));
+  assert.ok(!existsSync(join(ctx.home, '.cursor', 'mcp.json')));
 });

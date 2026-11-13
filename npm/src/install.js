@@ -24,7 +24,7 @@ function envPairs(env) {
 
 function runQuiet(command, args) {
   const result = spawnSync(command, args, { encoding: 'utf8' });
-  return { ok: result.status === 0, out: `${result.stdout || ''}${result.stderr || ''}`.trim() };
+  return { ok: result.status === 0, stdout: (result.stdout || '').trim(), out: `${result.stdout || ''}${result.stderr || ''}`.trim() };
 }
 
 function cliClient(id, name, binary, removeArgs, addArgs) {
@@ -104,9 +104,13 @@ export function install(options, log = console.log) {
       return 1;
     }
   }
-  const toolBin = runQuiet('uv', ['tool', 'dir', '--bin']).out.split('\n').pop().trim();
+  const toolBin = runQuiet('uv', ['tool', 'dir', '--bin']).stdout.split('\n').pop().trim();
   const server = join(toolBin, `unfoldx-mcp${EXE}`);
   const cli = join(toolBin, `unfoldx${EXE}`);
+  if (!toolBin || !existsSync(server) || !existsSync(cli)) {
+    log(`uv installed the tools, but they are not in its bin directory (${toolBin || 'unknown'}). Run \`uv tool dir --bin\` to check.`);
+    return 1;
+  }
 
   const env = { UNFOLDX_API_BASE: options.apiBase };
   if (options.key) {

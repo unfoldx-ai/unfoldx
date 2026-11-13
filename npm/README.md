@@ -24,7 +24,7 @@ An existing `unfoldx` entry is replaced; other servers are left alone.
 ```bash
 npx -y unfoldx-mcp install --client claude,cursor            # only these tools
 npx -y unfoldx-mcp install --key "<API key>"                  # key from the Connections page, no browser login
-npx -y unfoldx-mcp install --api-base https://dev.unfoldx.ai/api
+npx -y unfoldx-mcp install --api-base <url>                   # default: the CLI's, https://dev.unfoldx.ai/api
 npx -y unfoldx-mcp install --client none                      # install and log in only
 ```
 
