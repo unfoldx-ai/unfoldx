@@ -10,8 +10,7 @@ from pathlib import Path
 
 from .errors import UnfoldxError
 
-# The public API opens on the development site first.
-DEFAULT_API_BASE = "https://dev.unfoldx.ai/api"
+DEFAULT_API_BASE = "https://api.unfoldx.ai/api"
 PROJECT_CONFIG_NAME = ".unfoldx.toml"
 
 
