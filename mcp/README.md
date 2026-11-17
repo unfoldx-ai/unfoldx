@@ -5,6 +5,12 @@ It reuses the `unfoldx` CLI's API client and credential store. Log in once with 
 CLI (`unfoldx login`); the server reads that credential for the same API base on
 every call, so it picks up a new login without a restart. It never prints the token.
 
+The key never appears in a command or a host config: `unfoldx login` keeps it in the OS
+keychain (`unfoldx[keychain]`) or a 0600 file, and the host config names only the server.
+An agent can run the setup itself: it runs `unfoldx login`, hands the user the link and code,
+and waits for the approval. A host loads MCP servers when a session starts, so start a new
+session after adding the server.
+
 ```bash
 uv tool install unfoldx-mcp --with-executables-from unfoldx   # or: pip install unfoldx-mcp
 unfoldx login                          # approve in the browser
