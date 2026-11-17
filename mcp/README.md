@@ -7,12 +7,13 @@ every call, so it picks up a new login without a restart. It never prints the to
 
 The key never appears in a command or a host config: `unfoldx login` keeps it in the OS
 keychain (`unfoldx[keychain]`) or a 0600 file, and the host config names only the server.
-An agent can run the setup itself: it runs `unfoldx login`, hands the user the link and code,
-and waits for the approval. A host loads MCP servers when a session starts, so start a new
+An agent can run the setup itself: it runs `unfoldx login` in the background (the command
+blocks for up to 10 minutes until the approval), hands the user the link and code as soon as
+they print, and waits. Skip it when `unfoldx whoami` already succeeds. A host loads MCP servers when a session starts, so start a new
 session after adding the server.
 
 ```bash
-uv tool install unfoldx-mcp --with-executables-from unfoldx   # or: pip install unfoldx-mcp
+uv tool install unfoldx-mcp --with-executables-from unfoldx --with keyring   # or: pip install unfoldx-mcp 'unfoldx[keychain]'
 unfoldx login                          # approve in the browser
 claude mcp add unfoldx -- unfoldx-mcp  # any MCP host that launches stdio servers
 codex mcp add unfoldx -- unfoldx-mcp   # Codex
