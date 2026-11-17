@@ -66,7 +66,9 @@ Precedence: flags > environment > `./.unfoldx.toml` > `~/.config/unfoldx/config.
 
 `login` stores the `ufx_` token per API base: in the OS keychain with the `keychain`
 extra, otherwise in `~/.config/unfoldx/credentials.json` (0600). `UNFOLDX_TOKEN`
-overrides both. A token is only ever sent to the API base that issued it. The user
+overrides both; it is meant for CI secrets, not for typing into a command or an MCP host's
+config, where the key would sit in shell history or a plain config file. A token is only
+ever sent to the API base that issued it. The user
 chooses scopes and a credit budget on the approval page; `publish:confirm` is off
 by default. Credentials last 90 days and can be revoked on the web or with `logout`.
 

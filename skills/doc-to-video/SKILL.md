@@ -12,8 +12,12 @@ runs through the `unfoldx` CLI. It never generates video locally.
 ## Prerequisites
 
 1. The CLI is installed (`pip install unfoldx`). Check with `unfoldx doctor --json`.
-2. The user has logged in with `unfoldx login`. It shows a link and a code that the user
-   approves in the browser. Ask the user to do this; never approve on their behalf.
+2. The user has logged in: `unfoldx whoami --json` succeeds. If not, you may run `unfoldx login`
+   yourself. It prints a link and a code, then blocks for up to 10 minutes until the user
+   approves, so run it in the background (or with a timeout of at least 10 minutes) and give
+   both to the user as soon as they appear; wait while they approve in the browser. Never
+   approve on their behalf, never ask the user to paste an API key to you, and never read a
+   key out of an MCP host's config to pass it on: the CLI and `unfoldx-mcp` share the stored login.
 3. If `doctor` reports `ok_all: false`, show the failing checks to the user and stop.
 
 ## Workflow
