@@ -55,7 +55,7 @@ Precedence: flags > environment > `./.unfoldx.toml` > `~/.config/unfoldx/config.
 
 | Setting | Env | Default |
 | --- | --- | --- |
-| `api_base` | `UNFOLDX_API_BASE` | `https://dev.unfoldx.ai/api` |
+| `api_base` | `UNFOLDX_API_BASE` | `https://api.unfoldx.ai/api` (production; the development site is `https://dev.unfoldx.ai/api`) |
 | `timeout_sec` | `--timeout` flag | 30 (total HTTP operation, including retries) |
 | `wait_timeout_sec` | — | 3600 |
 | `poll_interval_sec` | — | 5 |

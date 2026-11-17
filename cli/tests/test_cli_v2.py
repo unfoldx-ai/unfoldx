@@ -107,6 +107,13 @@ def test_a_token_is_bound_to_the_api_it_was_issued_by(cli, platform, monkeypatch
     assert code == 3 and out["error"]["code"] == "not_logged_in"
 
 
+def test_without_settings_the_cli_talks_to_production(cli, monkeypatch):
+    monkeypatch.delenv("UNFOLDX_API_BASE")
+    code, out, _ = cli("whoami")
+    assert code == 3 and out["error"]["code"] == "not_logged_in"
+    assert "https://api.unfoldx.ai/api" in out["error"]["message"]
+
+
 def test_redaction_covers_the_whole_url_safe_token():
     from unfoldx_cli.redact import redact_text
     assert redact_text(f"token {TOKEN} end") == "token ***redacted*** end"

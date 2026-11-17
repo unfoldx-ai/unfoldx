@@ -6,7 +6,7 @@
     "summary": "Delegate explainer videos to the UnfoldX main agent and follow them to the finished film.",
     "description": "The single contract for the `unfoldx` CLI, the `unfoldx-mcp` server and any other client.\n\n* Every response is the `unfoldx.v2` envelope: `data` when `ok` is true, `error` otherwise.\n  Responses carry `Cache-Control: no-store`.\n* `error.type` is a closed set that clients map to exit codes; `error.code` is the precise reason.\n* Public ids only: workspace ids, `run_…`, `<run_id>.video|cover`, `mat_…`, `cred_…`.\n* A workspace is one main-agent conversation; a run is one message to it.\n* Writes run through the same services as the web. `POST /v2/runs` needs an `Idempotency-Key`\n  (the client's command id): the same key and body return the same run, a changed body is 409.\n* A route card is answered on the user's behalf only within the credential's budget; above it the\n  answer is `needs_input/approval_required` with the `approval_url` where the user confirms.\n* Publishing requires explicit publish:confirm scope and a current publish card.\n* Clients name themselves on every request with `X-Unfoldx-Client` (`cli` or `mcp`,\n  `#/components/parameters/UnfoldxClient`).\n"
   },
-  "servers": [{"url": "https://dev.unfoldx.ai/api", "description": "development site (the public API opens here first)"}],
+  "servers": [{"url": "https://api.unfoldx.ai/api", "description": "production"}, {"url": "https://dev.unfoldx.ai/api", "description": "development site (test accounts only)"}],
   "security": [{"bearer": []}],
   "paths": {
     "/v2/auth/device": {
