@@ -27,6 +27,11 @@ unfoldx runs wait <run_id> --json
 unfoldx artifacts download <run_id>.video --out ./out --json
 ```
 
+The CLI and MCP server talk to production (`https://api.unfoldx.ai/api`) by default; set
+`UNFOLDX_API_BASE=https://dev.unfoldx.ai/api` for the development site. Logins are stored per API
+base, so after upgrading from 0.6.x (which defaulted to the development site) run `unfoldx login`
+again, and unset any `UNFOLDX_TOKEN` issued by the development site.
+
 The public contract lives in `cli/src/unfoldx_cli/openapi.json` and is shipped with the stdlib-only CLI package and shared by MCP.
 
 For MCP hosts: install `unfoldx-mcp` (`uv tool install unfoldx-mcp --with-executables-from unfoldx`, which also installs the `unfoldx` CLI used to log in) and register `unfoldx-mcp` as a stdio
