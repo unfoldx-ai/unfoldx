@@ -88,11 +88,11 @@ stdlib-only. Tests: `cd mcp && uv run pytest tests`.
 
 Descriptions, scopes, input and output schemas come from `unfoldx_cli/openapi.json` (`x-mcp-tools` lists the tools),
 bundled once with the CLI dependency. Response schemas accept fields this client does not know yet, so a newer
-server does not break an older client. Each tool states its required scope. Personal memory and deletes are not
-exposed; manage them in the UnfoldX web app. Sharing and other public actions without their scope answer
+server does not break an older client. Each tool states its required scope. Personal memory is not exposed, and
+nothing deletes your data; manage that in the UnfoldX web app. Sharing and other public actions without their scope answer
 `insufficient_scope` with `error.details.approval_url`, where the user confirms in the web app.
-Writes with side effects do not automatically retry unless their existing service provides idempotency. Destructive
-operations require `confirm=true`. Missing scopes are server-enforced even if a host ignores tool annotations.
+Writes with side effects do not automatically retry unless their existing service provides idempotency. Making or
+withdrawing a public share and generating paid covers require `confirm=true`; `unfoldx_run_cancel` needs none (repeating it is harmless). Missing scopes are server-enforced even if a host ignores tool annotations.
 
 `unfoldx_work_export` and `unfoldx_superfast_download` write local files with the CLI's atomic no-clobber behavior;
 `overwrite=true` is an explicit replacement. Derived audio requires ffmpeg.

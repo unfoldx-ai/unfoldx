@@ -2228,7 +2228,8 @@
                   "material_not_ready",
                   "upload_incomplete",
                   "insufficient_credits",
-                  "concurrent_generation_limit"
+                  "concurrent_generation_limit",
+                  "command_in_progress"
                 ]
               },
               "message": {"type": "string"},

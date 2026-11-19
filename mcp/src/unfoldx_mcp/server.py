@@ -31,7 +31,7 @@ from unfoldx_cli.redact import redact
 
 from . import __version__
 from .contracts import (DEFAULT_TOOLSETS, TOOLS, TOOLSETS, description, hints, operation_for, operation_input_schema,
-                        output_schema, tool_input_schema)
+                        operation_output_schema, output_schema, tool_input_schema)
 
 INSTRUCTIONS = """UnfoldX turns a topic or material into an explainer video through its main agent.
 A run is one message to that agent. Start one with unfoldx_run_submit (upload local files first with
@@ -85,6 +85,7 @@ class UnfoldxServer(MCPServer):
         tools = await super().list_tools()
         for tool in tools:
             tool.output_schema = output_schema(tool.name)
+            tool.input_schema = {**tool.input_schema, 'additionalProperties': False}
         tools += [Tool(name=name, description=description(name), input_schema=tool_input_schema(name),
                        output_schema=output_schema(name),
                        annotations=ToolAnnotations(open_world_hint=False, **hints(name))) for name in GENERATED]
@@ -93,16 +94,21 @@ class UnfoldxServer(MCPServer):
                 and not (self.read_only and not tool.annotations.read_only_hint)]
 
     async def call_tool(self, name, arguments, context=None):
-        if name in TOOLS and name not in {tool.name for tool in await self.list_tools()}:
+        offered = {tool.name: tool for tool in await self.list_tools()}
+        if name in TOOLS and name not in offered:
             return _tool_error(UnfoldxError('auth_failed', 'This tool is disabled by the server toolsets/read-only configuration.',
                                             code='tool_disabled'))
+        expected = None
         try:
             if name in GENERATED:
                 Draft202012Validator(tool_input_schema(name)).validate(arguments)
                 operation_id, values = operation_for(name, arguments)
                 Draft202012Validator(operation_input_schema(operation_id)).validate(values)
+                expected = operation_output_schema(operation_id)
                 result = _call(lambda client: invoke(client, operation_id, values))
             else:
+                if name in offered:
+                    Draft202012Validator(offered[name].input_schema).validate(arguments)
                 result = await super().call_tool(name, arguments, context)
         except SchemaError as exc:
             return _tool_error(UnfoldxError('invalid_request', exc.message, code='invalid_arguments'))
@@ -114,7 +120,7 @@ class UnfoldxServer(MCPServer):
                 return _tool_error(UnfoldxError('invalid_request', 'Invalid or missing arguments: ' + fields, code='invalid_arguments'))
             return _tool_error(UnfoldxError('invalid_request', str(exc), code='unknown_tool'))
         try:
-            Draft202012Validator(output_schema(name)).validate(result.structured_content)
+            Draft202012Validator(expected or output_schema(name)).validate(result.structured_content)
         except SchemaError:
             return _tool_error(UnfoldxError('server_error', 'API response did not match the published contract.', code='invalid_response'))
         return result

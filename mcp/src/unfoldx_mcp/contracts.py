@@ -53,6 +53,10 @@ def _success(operation_id):
     return schema_refs(response['content']['application/json']['schema'])
 
 
+def operation_output_schema(operation_id):
+    return with_definitions({'type': 'object', 'oneOf': [_success(operation_id), {'$ref': '#/$defs/Failure'}]})
+
+
 def output_schema(tool_name):
     local = TOOLS[tool_name].get('local')
     if isinstance(local, str):

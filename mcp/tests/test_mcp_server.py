@@ -12,7 +12,7 @@ import pytest
 UNFOLDX = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(UNFOLDX / "cli" / "tests")]
 
-from fake_platform import RUN, TOKEN, serve  # noqa: E402
+from fake_platform import FILM, RUN, TOKEN, serve  # noqa: E402
 
 CORE_READS = {"unfoldx_capabilities", "unfoldx_credits", "unfoldx_catalog", "unfoldx_workspaces", "unfoldx_run_get",
               "unfoldx_materials"}
@@ -222,3 +222,36 @@ def test_every_request_says_it_comes_from_the_mcp_server(platform, tmp_path):
     assert _status().is_error is False
     assert platform.objects and len(platform.clients) >= 4
     assert set(platform.clients) == {"mcp"}
+
+
+def test_work_export_saves_the_film_and_never_overwrites_by_default(platform, tmp_path, monkeypatch):
+    _logged_in(platform)
+    original = platform.handle
+    def handle(method, path, query, headers, body):
+        if path == f'/api/v2/works/{RUN}/exports':
+            return platform.envelope({'run_id': RUN, 'metadata': {'title': '月相'}, 'unavailable': [], 'note': None,
+                                      'files': [{'role': 'video', 'filename': 'moon.mp4',
+                                                 'url': platform.base + '/files/film.mp4'}]})
+        if path == '/files/film.mp4':
+            return 200, FILM
+        return original(method, path, query, headers, body)
+    monkeypatch.setattr(platform, 'handle', handle)
+    args = {'run_id': RUN, 'format': 'video', 'out': str(tmp_path / 'out')}
+    saved = _call('unfoldx_work_export', args)
+    assert saved.is_error is False, saved.structured_content
+    assert Path(saved.structured_content['data']['files'][0]['path']).read_bytes() == FILM
+    again = _call('unfoldx_work_export', args)
+    assert again.is_error and again.structured_content['error']['code'] == 'file_exists'
+    extra = _call('unfoldx_work_export', {**args, 'bogus': 1})
+    assert extra.is_error and extra.structured_content['error']['code'] == 'invalid_arguments'
+
+
+def test_a_response_is_checked_against_the_method_that_was_called(platform, monkeypatch):
+    _logged_in(platform)
+    original = platform.handle
+    def events_shaped(method, path, query, headers, body):
+        if path == f'/api/v2/runs/{RUN}':
+            return original(method, f'/api/v2/runs/{RUN}/events', {'after_seq': ['0']}, headers, body)
+        return original(method, path, query, headers, body)
+    monkeypatch.setattr(platform, 'handle', events_shaped)
+    assert _status().structured_content['error']['code'] == 'invalid_response'
