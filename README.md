@@ -37,6 +37,14 @@ The public contract lives in `cli/src/unfoldx_cli/openapi.json` and is shipped w
 For MCP hosts: install `unfoldx-mcp` (`uv tool install unfoldx-mcp --with-executables-from unfoldx`, which also installs the `unfoldx` CLI used to log in) and register `unfoldx-mcp` as a stdio
 server; it uses the CLI's login. See `mcp/README.md`.
 
+## Browser extension
+
+开物 UnfoldX 极速成片 turns the page you are reading, selected text or a screenshot into an explainer
+video in the browser side panel. It is under review on the Chrome Web Store; until it is listed,
+download the zip from the [latest extension release](https://github.com/unfoldx-ai/unfoldx/releases/tag/extension-v0.9.4)
+and load it unpacked (`chrome://extensions` → Developer mode → Load unpacked). The release notes
+have step-by-step instructions. The extension source is not in this repository.
+
 ## Design principles
 
 - **One contract.** The CLI and the MCP server are adapters over the same HTTP API
