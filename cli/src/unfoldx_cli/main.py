@@ -62,6 +62,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("logout", help="revoke this machine's credential and forget it", parents=[common])
     sub.add_parser("whoami", help="the credential in use: scopes, budget, expiry", parents=[common])
     sub.add_parser("capabilities", help="operations, routes and limits open to this credential", parents=[common])
+    sub.add_parser("credits", help="what this key can still spend today: wallet, caps and the rolling 24h remainder",
+                   parents=[common])
     sub.add_parser("doctor", help="diagnose credentials, connectivity and version", parents=[common])
 
     workspaces = group("workspaces", "conversations that hold runs")
@@ -145,6 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
 _READS = {
     ("whoami", None): "/v2/me",
     ("capabilities", None): "/v2/capabilities",
+    ("credits", None): "/v2/credits",
     ("workspaces", "list"): "/v2/workspaces",
     ("workspaces", "show"): "/v2/workspaces/{workspace_id}",
     ("runs", "status"): "/v2/runs/{run_id}",

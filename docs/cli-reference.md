@@ -12,6 +12,7 @@ followed to its film.
 | `logout` | Revokes this machine's credential on the server and forgets it |
 | `whoami` | The credential in use: scopes, credit budget, expiry |
 | `capabilities` | Operations, routes and minimum client version for this credential |
+| `credits` | What this key can still approve today: wallet, caps, the rolling-24h remainder and `auto_approve_limit` |
 | `doctor` | Python, credentials, API reachability, auth and version checks |
 | `workspaces list [--limit N] [--cursor CURSOR] [--query TEXT] [--state STATE]` / `workspaces show ID` | Workspaces ordered by creation time; title search and run-state filtering; follow `next_cursor` with the same query/state until null / one workspace with its runs |
 | `runs submit --goal TEXT [--url URL]… [--file PATH]… [--material ID]… [--workspace ID]` | Sends the main agent a message: a new workspace, or a follow-up in `--workspace`. Files are uploaded first. Prints `command_id` and the run. `--input-json FILE\|-` takes the same fields (`goal`, `urls`, `files`, `material_ids`, `workspace_id`) instead of flags; mixing both is a usage error |
@@ -138,10 +139,6 @@ existing tokens do not silently gain new permissions.
   can also be answered using their `answer_schema`, with both `runs:answer` and `covers:write` scopes.
 - `shares create RUN --yes` explicitly publishes a public link; `shares revoke RUN --yes` withdraws the workspace's
   owner shares so an earlier version cannot become public accidentally. `shares show RUN` is read-only.
-- `publishing accounts` / `publishing drafts --page 1` / `publishing show DRAFT` expose account and draft state,
-  errors, handoff/final links when recorded, and next actions. `publishing retry DRAFT --yes` requeues the same queued
-  job only. An ended or ambiguous upload requires a fresh publish confirmation, not a blind retry.
-  Connecting or disconnecting a publishing account happens only in the UnfoldX web app.
 - `brands list/create/update`, `brand-assets create/update` manage existing brand entitlement.
   Logo/background inputs use an owned image `--material-id`; slogan/palette use structured data. No voice-cloning
   operation or arbitrary server URL fetch is implied.
@@ -152,8 +149,10 @@ existing tokens do not silently gain new permissions.
 ## Superfast via CLI
 
 Superfast is a separate job, not a route name in `runs answer`. It must be enabled on the target deployment and
-requires the explicit, default-off `superfast:create` grant. It is currently **not metered by the credit ledger**;
-`billing.status=not_metered` is not a free-service promise and the main-agent credit cap does not govern it.
+requires the explicit, default-off `superfast:create` grant. Its production hold counts against the same key budget
+as route cards: `billing.status` is `held` until the film settles it (`settled`) or a failure refunds it
+(`refunded`). Above the key's budget the submit answers `approval_required`; raise the key's caps in the web app's
+key settings or ask the user to submit there.
 
 ```bash
 unfoldx superfast submit --chat '讲清月相' --command-id sf-moon-20261104-01 --json

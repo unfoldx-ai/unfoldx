@@ -1,17 +1,14 @@
-"""MCP JSON Schemas from the packaged public API contract; no second set of response models."""
-from unfoldx_cli.resources import DOCUMENT, OPERATIONS as RESOURCE_OPERATIONS
+"""MCP tools and their JSON Schemas from the packaged public API contract; no second set of models.
 
-OPERATIONS = {operation['operationId']: operation for path in DOCUMENT['paths'].values()
-              for operation in path.values() if isinstance(operation, dict) and 'operationId' in operation}
-TOOL_OPERATIONS = dict(zip(
-    ('capabilities', 'whoami', 'workspaces_list', 'workspace_get', 'run_status', 'run_events', 'run_questions',
-     'run_result', 'run_usage', 'artifact_get', 'artifact_access', 'material_upload', 'material_get',
-     'run_submit', 'command_get', 'run_answer', 'run_cancel'),
-    ('capabilities', 'me', 'listWorkspaces', 'getWorkspace', 'getRun', 'getRunEvents', 'getRunQuestions',
-     'getRunResult', 'getRunUsage', 'getArtifact', 'accessArtifact', 'completeMaterialUpload', 'getMaterial',
-     'submitRun', 'getCommand', 'answerRun', 'cancelRun'), strict=True))
+`x-mcp-tools` in openapi.json names every tool, its toolset and the operations it runs. A tool with several
+operations takes `method` to pick one; reads and writes never share a tool, so read-only filtering and
+annotations stay per tool.
+"""
+from unfoldx_cli.resources import DOCUMENT, OPERATIONS, input_schema
 
-TOOL_OPERATIONS.update({name.removeprefix('unfoldx_'): op['operationId'] for name, (_, _, op) in RESOURCE_OPERATIONS.items()})
+TOOLS = DOCUMENT['x-mcp-tools']
+TOOLSETS = sorted({spec['toolset'] for spec in TOOLS.values()})
+DEFAULT_TOOLSETS = frozenset({'core'})
 
 
 def schema_refs(value):
@@ -43,14 +40,79 @@ def with_definitions(schema):
     return {**schema, '$defs': used}
 
 
-def output_schema(tool_name):
-    if tool_name in DOCUMENT.get('x-local-tools', {}):
-        data = schema_refs(DOCUMENT['x-local-tools'][tool_name]['output'])
-        return with_definitions({'type':'object','oneOf':[{'type':'object','required':['schema','ok','data'],
-            'properties':{'schema':{'const':'unfoldx.v2'},'ok':{'const':True},'data':data}}, {'$ref':'#/$defs/Failure'}]})
-    operation = OPERATIONS[TOOL_OPERATIONS[tool_name.removeprefix('unfoldx_')]]
+def operations(tool_name):
+    """{method: operationId}; a single-operation tool has the one method ''."""
+    return TOOLS[tool_name].get('operations', {})
+
+
+def _success(operation_id):
+    operation = OPERATIONS[operation_id][2]
     response = next(value for code, value in operation['responses'].items() if str(code).startswith('2'))
     if '$ref' in response:
         response = DOCUMENT['components']['responses'][response['$ref'].rsplit('/', 1)[1]]
-    return with_definitions({'type': 'object', 'oneOf': [schema_refs(response['content']['application/json']['schema']),
-                                       {'$ref': '#/$defs/Failure'}]})
+    return schema_refs(response['content']['application/json']['schema'])
+
+
+def operation_output_schema(operation_id):
+    return with_definitions({'type': 'object', 'oneOf': [_success(operation_id), {'$ref': '#/$defs/Failure'}]})
+
+
+def output_schema(tool_name):
+    local = TOOLS[tool_name].get('local')
+    if isinstance(local, str):
+        successes = [_success(local)]
+    elif local is not None:
+        successes = [{'type': 'object', 'required': ['schema', 'ok', 'data'],
+                      'properties': {'schema': {'const': 'unfoldx.v2'}, 'ok': {'const': True}, 'data': schema_refs(local)}}]
+    else:
+        successes = [_success(operation_id) for operation_id in operations(tool_name).values()]
+    success = successes[0] if len(successes) == 1 else {'anyOf': successes}
+    return with_definitions({'type': 'object', 'oneOf': [success, {'$ref': '#/$defs/Failure'}]})
+
+
+def operation_input_schema(operation_id):
+    return with_definitions(schema_refs(input_schema(OPERATIONS[operation_id][2])))
+
+
+def tool_input_schema(tool_name):
+    ops = operations(tool_name)
+    if list(ops) == ['']:
+        return operation_input_schema(ops[''])
+    properties = {'method': {'enum': list(ops)}}
+    for operation_id in ops.values():
+        for name, spec in schema_refs(input_schema(OPERATIONS[operation_id][2]))['properties'].items():
+            properties.setdefault(name, spec)
+    return with_definitions({'type': 'object', 'properties': properties, 'required': ['method'],
+                             'additionalProperties': False})
+
+
+def operation_for(tool_name, arguments):
+    """The operation a call runs and the arguments it takes, without `method`."""
+    ops = operations(tool_name)
+    if list(ops) == ['']:
+        return ops[''], dict(arguments)
+    values = dict(arguments)
+    return ops[values.pop('method')], values
+
+
+def description(tool_name):
+    spec = TOOLS[tool_name]
+    ops = operations(tool_name)
+    if list(ops) == ['']:
+        op = OPERATIONS[ops['']][2]
+        text = spec.get('description') or op.get('description') or op['summary']
+        return text + (' Required scope: ' + op['x-scope'] if op.get('x-scope') else '')
+    lines = [spec['description'], 'method:']
+    for method, operation_id in ops.items():
+        op = OPERATIONS[operation_id][2]
+        required = [name for name in input_schema(op)['required']]
+        lines.append(f"- {method}: {op['summary']}" + (f" Needs {', '.join(required)}." if required else '')
+                     + (f" Scope {op['x-scope']}." if op.get('x-scope') else ''))
+    return '\n'.join(lines)
+
+
+def hints(tool_name):
+    ops = [OPERATIONS[operation_id] for operation_id in operations(tool_name).values()]
+    return {'read_only_hint': all(method == 'GET' for _, method, _ in ops),
+            'destructive_hint': any(op.get('x-destructive', False) for _, _, op in ops),
+            'idempotent_hint': all(method == 'GET' or op.get('x-idempotent', False) for _, method, op in ops)}

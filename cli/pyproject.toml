@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "unfoldx"
-version = "0.7.0"
+version = "0.8.0"
 description = "UnfoldX CLI - delegate explainer videos to the UnfoldX main agent and follow them to the finished film."
 readme = "README.md"
 requires-python = ">=3.11"

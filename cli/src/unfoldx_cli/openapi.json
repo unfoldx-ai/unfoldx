@@ -2,11 +2,14 @@
   "openapi": "3.1.0",
   "info": {
     "title": "UnfoldX public API",
-    "version": "2.6.0",
+    "version": "2.7.0",
     "summary": "Delegate explainer videos to the UnfoldX main agent and follow them to the finished film.",
     "description": "The single contract for the `unfoldx` CLI, the `unfoldx-mcp` server and any other client.\n\n* Every response is the `unfoldx.v2` envelope: `data` when `ok` is true, `error` otherwise.\n  Responses carry `Cache-Control: no-store`.\n* `error.type` is a closed set that clients map to exit codes; `error.code` is the precise reason.\n* Public ids only: workspace ids, `run_…`, `<run_id>.video|cover`, `mat_…`, `cred_…`.\n* A workspace is one main-agent conversation; a run is one message to it.\n* Writes run through the same services as the web. `POST /v2/runs` needs an `Idempotency-Key`\n  (the client's command id): the same key and body return the same run, a changed body is 409.\n* A route card is answered on the user's behalf only within the credential's budget; above it the\n  answer is `needs_input/approval_required` with the `approval_url` where the user confirms.\n* Publishing requires explicit publish:confirm scope and a current publish card.\n* Clients name themselves on every request with `X-Unfoldx-Client` (`cli` or `mcp`,\n  `#/components/parameters/UnfoldxClient`).\n"
   },
-  "servers": [{"url": "https://api.unfoldx.ai/api", "description": "production"}, {"url": "https://dev.unfoldx.ai/api", "description": "development site (test accounts only)"}],
+  "servers": [
+    {"url": "https://api.unfoldx.ai/api", "description": "production"},
+    {"url": "https://dev.unfoldx.ai/api", "description": "development site (test accounts only)"}
+  ],
   "security": [{"bearer": []}],
   "paths": {
     "/v2/auth/device": {
@@ -153,7 +156,11 @@
                               "type": "array",
                               "items": {
                                 "type": "object",
-                                "properties": {"route": {"type": "string"}, "label": {"type": "string"}}
+                                "properties": {
+                                  "route": {"type": "string"},
+                                  "label": {"type": "string"},
+                                  "label_en": {"type": "string"}
+                                }
                               }
                             },
                             "skills": {
@@ -172,7 +179,10 @@
           },
           "401": {"$ref": "#/components/responses/Error"},
           "403": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "capabilities:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/workspaces": {
@@ -200,7 +210,11 @@
                                 "required": ["workspace_id", "web_url", "runs"],
                                 "properties": {
                                   "workspace_id": {"type": "string"},
-                                  "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+                                  "web_url": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"
+                                  },
                                   "title": {"type": ["string", "null"]},
                                   "updated_at": {"$ref": "#/components/schemas/Time"},
                                   "runs": {"type": "integer", "description": "number of runs"}
@@ -235,7 +249,10 @@
           {"name": "cursor", "in": "query", "schema": {"type": "string"}},
           {"name": "q", "in": "query", "schema": {"type": "string", "maxLength": 200}},
           {"name": "state", "in": "query", "schema": {"$ref": "#/components/schemas/RunState"}}
-        ]
+        ],
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/workspaces/{workspace_id}": {
@@ -258,7 +275,11 @@
                           "required": ["workspace_id", "web_url", "runs"],
                           "properties": {
                             "workspace_id": {"type": "string"},
-                            "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+                            "web_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"
+                            },
                             "title": {"type": ["string", "null"]},
                             "created_at": {"$ref": "#/components/schemas/Time"},
                             "runs": {"type": "array", "items": {"$ref": "#/components/schemas/Run"}}
@@ -274,7 +295,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "403": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/runs": {
@@ -334,7 +358,10 @@
           "404": {"$ref": "#/components/responses/Error"},
           "409": {"$ref": "#/components/responses/Error"},
           "429": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:create",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/commands/{command_id}": {
@@ -348,14 +375,20 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [{"$ref": "#/components/schemas/Ok"}, {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}]
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}
+                  ]
                 }
               }
             }
           },
           "401": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/runs/{run_id}/answers": {
@@ -404,7 +437,10 @@
           "404": {"$ref": "#/components/responses/Error"},
           "409": {"$ref": "#/components/responses/Error"},
           "429": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:answer",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/runs/{run_id}/cancel": {
@@ -437,7 +473,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "403": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:cancel",
+        "x-idempotent": true,
+        "x-destructive": true
       }
     },
     "/v2/materials/uploads": {
@@ -526,7 +565,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
         },
-        "description": "Read an owned material. Requires materials:read."
+        "description": "Read an owned material. Requires materials:read.",
+        "x-scope": "materials:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/materials/{material_id}/complete": {
@@ -551,7 +593,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"},
           "409": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "materials:write",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/runs/{run_id}": {
@@ -565,7 +610,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [{"$ref": "#/components/schemas/Ok"}, {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}]
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}
+                  ]
                 }
               }
             }
@@ -573,7 +621,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "403": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/runs/{run_id}/events": {
@@ -583,7 +634,11 @@
         "summary": "Events after a cursor. `seq` increases but is not contiguous; dedupe by `seq`.\nThe server answers at once; clients poll. Scope `runs:read`.\n",
         "parameters": [
           {"name": "after_seq", "in": "query", "schema": {"type": "integer", "minimum": 0, "default": 0}},
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}
+          }
         ],
         "responses": {
           "200": {
@@ -630,7 +685,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "403": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/runs/{run_id}/questions": {
@@ -663,7 +721,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "403": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/runs/{run_id}/result": {
@@ -710,7 +771,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "403": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "runs:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/runs/{run_id}/usage": {
@@ -757,7 +821,10 @@
           "401": {"$ref": "#/components/responses/Error"},
           "403": {"$ref": "#/components/responses/Error"},
           "404": {"$ref": "#/components/responses/Error"}
-        }
+        },
+        "x-scope": "usage:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     },
     "/v2/artifacts/{artifact_id}": {
@@ -836,12 +903,16 @@
         "summary": "Search your material library; follow next_page until null.",
         "description": "Search your material library; follow next_page until null.",
         "x-cli": ["materials", "list"],
-        "x-mcp": "unfoldx_materials_list",
         "x-scope": "materials:read",
         "x-idempotent": true,
         "x-destructive": false,
         "parameters": [
-          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "default": 1}
+          },
           {
             "name": "page_size",
             "in": "query",
@@ -849,7 +920,12 @@
             "schema": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}
           },
           {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
-          {"name": "type", "in": "query", "required": false, "schema": {"enum": ["all", "document", "image", "media"]}}
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {"enum": ["all", "document", "image", "media"]}
+          }
         ],
         "responses": {
           "200": {
@@ -864,8 +940,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/ResourcePage"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -880,7 +955,6 @@
         "summary": "List available styles; use returned IDs, never guess.",
         "description": "List available styles; use returned IDs, never guess.",
         "x-cli": ["catalogs", "styles"],
-        "x-mcp": "unfoldx_catalog_styles",
         "x-scope": "capabilities:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -898,8 +972,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/CatalogStyles"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -914,7 +987,6 @@
         "summary": "List available voices; use returned IDs, never guess.",
         "description": "List available voices; use returned IDs, never guess.",
         "x-cli": ["catalogs", "voices"],
-        "x-mcp": "unfoldx_catalog_voices",
         "x-scope": "capabilities:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -939,8 +1011,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/CatalogVoices"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -955,7 +1026,6 @@
         "summary": "List available covers; use returned IDs, never guess.",
         "description": "List available covers; use returned IDs, never guess.",
         "x-cli": ["catalogs", "covers"],
-        "x-mcp": "unfoldx_catalog_covers",
         "x-scope": "capabilities:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -973,8 +1043,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/CatalogCovers"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -989,12 +1058,16 @@
         "summary": "List finished video versions, filtered by title or workspace.",
         "description": "List finished video versions, filtered by title or workspace.",
         "x-cli": ["works", "list"],
-        "x-mcp": "unfoldx_works_list",
         "x-scope": "runs:read",
         "x-idempotent": true,
         "x-destructive": false,
         "parameters": [
-          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "default": 1}
+          },
           {
             "name": "page_size",
             "in": "query",
@@ -1017,8 +1090,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/ResourcePage"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1033,7 +1105,6 @@
         "summary": "Read one immutable run version of a work.",
         "description": "Read one immutable run version of a work.",
         "x-cli": ["works", "show"],
-        "x-mcp": "unfoldx_work_get",
         "x-scope": "runs:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1084,7 +1155,6 @@
         "summary": "Export manifest: original subtitles, public storyboard, transcript and downloadable media; absent timings are never invented.",
         "description": "Export manifest: original subtitles, public storyboard, transcript and downloadable media; absent timings are never invented.",
         "x-cli": ["works", "exports"],
-        "x-mcp": "unfoldx_work_exports",
         "x-scope": "artifacts:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1102,8 +1172,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/ExportManifest"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1118,7 +1187,6 @@
         "summary": "Read/create/revoke public sharing. A public share is visible outside your account.",
         "description": "Read/create/revoke public sharing. A public share is visible outside your account.",
         "x-cli": ["shares", "show"],
-        "x-mcp": "unfoldx_share_show",
         "x-scope": "runs:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1136,8 +1204,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/Share"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1150,7 +1217,6 @@
         "summary": "Read/create/revoke public sharing. A public share is visible outside your account.",
         "description": "Read/create/revoke public sharing. A public share is visible outside your account.",
         "x-cli": ["shares", "create"],
-        "x-mcp": "unfoldx_share_create",
         "x-scope": "share:write",
         "x-idempotent": true,
         "x-destructive": true,
@@ -1168,8 +1234,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/Share"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1201,7 +1266,6 @@
         "summary": "Read/create/revoke public sharing. A public share is visible outside your account.",
         "description": "Read/create/revoke public sharing. A public share is visible outside your account.",
         "x-cli": ["shares", "revoke"],
-        "x-mcp": "unfoldx_share_revoke",
         "x-scope": "share:write",
         "x-idempotent": true,
         "x-destructive": true,
@@ -1219,8 +1283,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/Share"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1254,7 +1317,6 @@
         "summary": "Get cover generation state, candidates and selection.",
         "description": "Get cover generation state, candidates and selection.",
         "x-cli": ["covers", "status"],
-        "x-mcp": "unfoldx_covers_status",
         "x-scope": "runs:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1272,8 +1334,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/CoverState"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1286,7 +1347,6 @@
         "summary": "Generate one cover per chosen layout (labels). Confirm the catalog price per cover; credential budgets apply.",
         "description": "Generate one cover per chosen layout (labels). Confirm the catalog price per cover; credential budgets apply.",
         "x-cli": ["covers", "generate"],
-        "x-mcp": "unfoldx_covers_generate",
         "x-scope": "covers:write",
         "x-idempotent": true,
         "x-destructive": true,
@@ -1305,8 +1365,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/CoverSubmission"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1328,8 +1387,14 @@
                   "style_id": {"enum": ["auto", "impact", "minimal", "lifestyle", "tech"], "default": "auto"},
                   "headline": {"type": "string", "minLength": 1, "maxLength": 120},
                   "instructions": {"type": "string", "maxLength": 500},
-                  "labels": {"type": "array", "items": {"enum": ["A", "B", "C"]}, "minItems": 1, "maxItems": 3, "uniqueItems": true,
-                    "description": "Layouts to make, one cover each at the catalog credits_each: A 大字标题, B 主体特写, C 图解对比. CLI takes JSON, e.g. [\"A\", \"C\"]."},
+                  "labels": {
+                    "type": "array",
+                    "items": {"enum": ["A", "B", "C"]},
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "uniqueItems": true,
+                    "description": "Layouts to make, one cover each at the catalog credits_each: A 大字标题, B 主体特写, C 图解对比. CLI takes JSON, e.g. [\"A\", \"C\"]."
+                  },
                   "confirm": {
                     "type": "boolean",
                     "const": true,
@@ -1350,7 +1415,6 @@
         "summary": "Select a returned cover candidate for this film.",
         "description": "Select a returned cover candidate for this film.",
         "x-cli": ["covers", "select"],
-        "x-mcp": "unfoldx_cover_select",
         "x-scope": "covers:write",
         "x-idempotent": false,
         "x-destructive": false,
@@ -1368,8 +1432,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/CoverSelection"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1397,7 +1460,6 @@
         "summary": "Audition one existing review scene; does not resume production. Read the current question and dictionary revision first.",
         "description": "Audition one existing review scene; does not resume production. Read the current question and dictionary revision first.",
         "x-cli": ["speech", "preview"],
-        "x-mcp": "unfoldx_speech_preview",
         "x-scope": "speech:write",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1416,8 +1478,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/SpeechSubmission"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1455,7 +1516,6 @@
         "summary": "Read an owned audition status and signed audio link when completed.",
         "description": "Read an owned audition status and signed audio link when completed.",
         "x-cli": ["speech", "status"],
-        "x-mcp": "unfoldx_speech_status",
         "x-scope": "runs:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1476,8 +1536,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/SpeechState"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1492,7 +1551,6 @@
         "summary": "Read/replace preferences with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
         "description": "Read/replace preferences with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
         "x-cli": ["preferences", "show"],
-        "x-mcp": "unfoldx_preferences_show",
         "x-scope": "settings:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1510,8 +1568,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/SettingsDocument"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1524,7 +1581,6 @@
         "summary": "Read/replace preferences with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
         "description": "Read/replace preferences with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
         "x-cli": ["preferences", "update"],
-        "x-mcp": "unfoldx_preferences_update",
         "x-scope": "settings:write",
         "x-idempotent": false,
         "x-destructive": false,
@@ -1542,8 +1598,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/SettingsDocument"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1578,7 +1633,6 @@
         "summary": "Read/replace pronunciations with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
         "description": "Read/replace pronunciations with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
         "x-cli": ["pronunciations", "show"],
-        "x-mcp": "unfoldx_pronunciations_show",
         "x-scope": "settings:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1596,8 +1650,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/SettingsDocument"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1610,7 +1663,6 @@
         "summary": "Read/replace pronunciations with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
         "description": "Read/replace pronunciations with the current revision. Stale revisions conflict; preserve fields you did not intend to change.",
         "x-cli": ["pronunciations", "update"],
-        "x-mcp": "unfoldx_pronunciations_update",
         "x-scope": "settings:write",
         "x-idempotent": false,
         "x-destructive": false,
@@ -1628,8 +1680,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/SettingsDocument"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1668,7 +1719,6 @@
         "summary": "List your brand kits and their assets.",
         "description": "List your brand kits and their assets.",
         "x-cli": ["brands", "list"],
-        "x-mcp": "unfoldx_brands_list",
         "x-scope": "brands:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -1686,8 +1736,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/BrandList"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1700,7 +1749,6 @@
         "summary": "Create a brand kit; requires existing brand entitlement.",
         "description": "Create a brand kit; requires existing brand entitlement.",
         "x-cli": ["brands", "create"],
-        "x-mcp": "unfoldx_brand_create",
         "x-scope": "brands:write",
         "x-idempotent": false,
         "x-destructive": false,
@@ -1719,8 +1767,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/Brand"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1747,7 +1794,6 @@
         "summary": "Update an owned brand kit.",
         "description": "Update an owned brand kit.",
         "x-cli": ["brands", "update"],
-        "x-mcp": "unfoldx_brand_update",
         "x-scope": "brands:write",
         "x-idempotent": false,
         "x-destructive": false,
@@ -1765,8 +1811,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/Brand"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1794,7 +1839,6 @@
         "summary": "Add a logo/background from an owned uploaded image, or slogan/palette.",
         "description": "Add a logo/background from an owned uploaded image, or slogan/palette.",
         "x-cli": ["brand-assets", "create"],
-        "x-mcp": "unfoldx_brand_asset_create",
         "x-scope": "brands:write",
         "x-idempotent": false,
         "x-destructive": false,
@@ -1813,8 +1857,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/BrandAsset"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1848,7 +1891,6 @@
         "summary": "Update an owned brand asset.",
         "description": "Update an owned brand asset.",
         "x-cli": ["brand-assets", "update"],
-        "x-mcp": "unfoldx_brand_asset_update",
         "x-scope": "brands:write",
         "x-idempotent": false,
         "x-destructive": false,
@@ -1866,8 +1908,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/BrandAsset"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -1894,177 +1935,12 @@
         }
       }
     },
-    "/v2/publishing/accounts": {
-      "get": {
-        "operationId": "publishing_accounts",
-        "summary": "List connected publishing accounts and enabled platforms; never returns login secrets.",
-        "description": "List connected publishing accounts and enabled platforms; never returns login secrets.",
-        "x-cli": ["publishing", "accounts"],
-        "x-mcp": "unfoldx_publishing_accounts",
-        "x-scope": "publishing:read",
-        "x-idempotent": true,
-        "x-destructive": false,
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "schema": {"const": "unfoldx.v2"},
-                    "ok": {"const": true},
-                    "request_id": {"type": ["string", "null"]},
-                    "data": {"$ref": "#/components/schemas/PublishingAccounts"}
-                  },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "default": {"$ref": "#/components/responses/Error"}
-        }
-      }
-    },
-    "/v2/publishing/drafts": {
-      "get": {
-        "operationId": "publishing_drafts",
-        "summary": "Page through publishing drafts, states, errors and next actions.",
-        "description": "Page through publishing drafts, states, errors and next actions.",
-        "x-cli": ["publishing", "drafts"],
-        "x-mcp": "unfoldx_publishing_drafts",
-        "x-scope": "publishing:read",
-        "x-idempotent": true,
-        "x-destructive": false,
-        "parameters": [
-          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}
-          },
-          {"name": "state", "in": "query", "required": false, "schema": {"type": "string"}}
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "schema": {"const": "unfoldx.v2"},
-                    "ok": {"const": true},
-                    "request_id": {"type": ["string", "null"]},
-                    "data": {"$ref": "#/components/schemas/ResourcePage"}
-                  },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "default": {"$ref": "#/components/responses/Error"}
-        }
-      }
-    },
-    "/v2/publishing/drafts/{draft_id}": {
-      "get": {
-        "operationId": "publishing_draft",
-        "summary": "Read draft receipt, final link when recorded, and recovery action.",
-        "description": "Read draft receipt, final link when recorded, and recovery action.",
-        "x-cli": ["publishing", "show"],
-        "x-mcp": "unfoldx_publishing_draft",
-        "x-scope": "publishing:read",
-        "x-idempotent": true,
-        "x-destructive": false,
-        "parameters": [{"name": "draft_id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "schema": {"const": "unfoldx.v2"},
-                    "ok": {"const": true},
-                    "request_id": {"type": ["string", "null"]},
-                    "data": {"$ref": "#/components/schemas/PublishingDraft"}
-                  },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "default": {"$ref": "#/components/responses/Error"}
-        }
-      }
-    },
-    "/v2/publishing/drafts/{draft_id}/retry": {
-      "post": {
-        "operationId": "publishing_retry",
-        "summary": "Requeue the same queued draft. Terminal/ambiguous failures require a new publish confirmation; never blindly upload twice.",
-        "description": "Requeue the same queued draft. Terminal/ambiguous failures require a new publish confirmation; never blindly upload twice.",
-        "x-cli": ["publishing", "retry"],
-        "x-mcp": "unfoldx_publishing_retry",
-        "x-scope": "publish:confirm",
-        "x-idempotent": true,
-        "x-destructive": true,
-        "parameters": [{"name": "draft_id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "schema": {"const": "unfoldx.v2"},
-                    "ok": {"const": true},
-                    "request_id": {"type": ["string", "null"]},
-                    "data": {"$ref": "#/components/schemas/PublishingDraft"}
-                  },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "default": {"$ref": "#/components/responses/Error"}
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "confirm": {
-                    "type": "boolean",
-                    "const": true,
-                    "description": "Explicit consent to this write/delete/publication; CLI --yes."
-                  }
-                },
-                "required": ["confirm"],
-                "additionalProperties": false
-              }
-            }
-          }
-        }
-      }
-    },
     "/v2/superfast/jobs": {
       "post": {
         "operationId": "superfast_submit",
         "summary": "Create/edit a separate superfast job. Explicit opt-in scope; not metered in the credit ledger, not a free-service promise.",
         "description": "Create/edit a separate superfast job. Explicit opt-in scope; not metered in the credit ledger, not a free-service promise.",
         "x-cli": ["superfast", "submit"],
-        "x-mcp": "unfoldx_superfast_submit",
         "x-scope": "superfast:create",
         "x-idempotent": true,
         "x-destructive": false,
@@ -2094,8 +1970,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/SuperfastSubmission"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -2108,11 +1983,20 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "chat": {"type": "string", "maxLength": 4000, "description": "Goal. Explicit numeric seconds/minutes (1–3600 seconds) become a planner duration budget."},
+                  "chat": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "description": "Goal. Explicit numeric seconds/minutes (1–3600 seconds) become a planner duration budget."
+                  },
                   "web_url": {"type": "string"},
                   "material_id": {"type": "string"},
                   "parent_job_id": {"type": "string"},
-                  "instruction": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "Edit the parent film in one sentence; only the changed shots re-render. The job returns reply, and a question or an edit superfast cannot make completes with reply and no film."},
+                  "instruction": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "description": "Edit the parent film in one sentence; only the changed shots re-render. The job returns reply, and a question or an edit superfast cannot make completes with reply and no film."
+                  },
                   "slides": {
                     "type": "array",
                     "items": {
@@ -2137,7 +2021,6 @@
         "summary": "Get superfast state, exact timing milestones and full storyboard. Use superfast_access to request a download after completion.",
         "description": "Get superfast state, exact timing milestones and full storyboard. Use superfast_access to request a download after completion.",
         "x-cli": ["superfast", "status"],
-        "x-mcp": "unfoldx_superfast_status",
         "x-scope": "superfast:read",
         "x-idempotent": true,
         "x-destructive": false,
@@ -2155,8 +2038,7 @@
                     "request_id": {"type": ["string", "null"]},
                     "data": {"$ref": "#/components/schemas/SuperfastJob"}
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
@@ -2171,7 +2053,6 @@
         "summary": "Get an entitled signed download link for a completed superfast film.",
         "description": "Get an entitled signed download link for a completed superfast film. Requires artifacts:read; status alone never grants export rights.",
         "x-cli": ["superfast", "access"],
-        "x-mcp": "unfoldx_superfast_access",
         "x-scope": "artifacts:read",
         "x-idempotent": false,
         "x-destructive": false,
@@ -2195,18 +2076,43 @@
                         "url": {"type": "string"},
                         "filename": {"type": "string"},
                         "expires_in": {"type": "integer"},
-                        "billing": {"type": "object"}
+                        "billing": {"$ref": "#/components/schemas/SuperfastBilling"}
                       }
                     }
                   },
-                  "required": ["schema", "ok", "data"],
-                  "additionalProperties": false
+                  "required": ["schema", "ok", "data"]
                 }
               }
             }
           },
           "default": {"$ref": "#/components/responses/Error"}
         }
+      }
+    },
+    "/v2/credits": {
+      "get": {
+        "operationId": "getCredits",
+        "summary": "What this key can still spend today: the wallet, the key's caps and what is left of its rolling 24-hour cap. Scope `usage:read`.",
+        "responses": {
+          "200": {
+            "description": "credits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/Credits"}}}
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Error"},
+          "403": {"$ref": "#/components/responses/Error"}
+        },
+        "x-scope": "usage:read",
+        "x-idempotent": true,
+        "x-destructive": false
       }
     }
   },
@@ -2259,7 +2165,10 @@
           }
         }
       },
-      "Error": {"description": "failure", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Failure"}}}}
+      "Error": {
+        "description": "failure",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Failure"}}}
+      }
     },
     "schemas": {
       "Ok": {
@@ -2319,7 +2228,8 @@
                   "material_not_ready",
                   "upload_incomplete",
                   "insufficient_credits",
-                  "concurrent_generation_limit"
+                  "concurrent_generation_limit",
+                  "command_in_progress"
                 ]
               },
               "message": {"type": "string"},
@@ -2350,7 +2260,6 @@
           "settings:write",
           "brands:read",
           "brands:write",
-          "publishing:read",
           "share:write",
           "superfast:read",
           "superfast:create"
@@ -2370,7 +2279,7 @@
       },
       "Skill": {
         "type": "object",
-        "required": ["id", "roles", "title", "says", "needs", "routes", "connection", "paid", "examples"],
+        "required": ["id", "roles", "title", "says", "needs", "routes", "paid", "examples"],
         "properties": {
           "id": {"type": "string", "examples": ["cinematic_film"]},
           "roles": {"type": "array", "items": {"enum": ["kai", "tan", "jiang", "chuan"]}},
@@ -2378,7 +2287,6 @@
           "says": {"type": "string"},
           "needs": {"type": "array", "items": {"type": "string"}, "description": "main-agent tools it relies on"},
           "routes": {"type": "array", "items": {"type": "string"}},
-          "connection": {"enum": ["publisher", null], "description": "publisher: needs a connected publishing account"},
           "paid": {"type": "boolean", "description": "some step it relies on is charged"},
           "examples": {
             "type": "array",
@@ -2428,7 +2336,11 @@
         "properties": {
           "run_id": {"type": "string"},
           "workspace_id": {"type": "string"},
-          "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+          "web_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"
+          },
           "state": {"$ref": "#/components/schemas/RunState"},
           "created_at": {"$ref": "#/components/schemas/Time"},
           "updated_at": {"$ref": "#/components/schemas/Time"},
@@ -2448,7 +2360,16 @@
       },
       "Question": {
         "type": "object",
-        "required": ["question_id", "contract", "text", "options", "approval_url", "answerable", "answer_schema", "answer_examples"],
+        "required": [
+          "question_id",
+          "contract",
+          "text",
+          "options",
+          "approval_url",
+          "answerable",
+          "answer_schema",
+          "answer_examples"
+        ],
         "properties": {
           "question_id": {"type": "string"},
           "contract": {
@@ -2456,7 +2377,10 @@
             "examples": ["unfoldx.route-choice.v2", "unfoldx.storyboard-review.v1", "unfoldx.publish-confirm.v3"]
           },
           "answerable": {"type": "boolean", "description": "false means this card is visible but requires the approval URL"},
-          "answer_schema": {"type": ["object", "boolean"], "description": "JSON Schema for this exact card; false means not answerable"},
+          "answer_schema": {
+            "type": ["object", "boolean"],
+            "description": "JSON Schema for this exact card; false means not answerable"
+          },
           "answer_examples": {"type": "array", "items": {"$ref": "#/components/schemas/Answer"}},
           "text": {"type": "string"},
           "storyboard": {
@@ -2525,7 +2449,8 @@
                     "style_candidates": {
                       "type": "array",
                       "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}}}
-                    }
+                    },
+                    "label_en": {"type": ["string", "null"]}
                   }
                 }
               },
@@ -2539,7 +2464,8 @@
                     "high": {"type": "integer"},
                     "hold": {"type": "integer", "description": "credits held if this route is chosen"},
                     "eta_minutes": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
-                    "quote_ref": {"type": "string"}
+                    "quote_ref": {"type": "string"},
+                    "label_en": {"type": ["string", "null"]}
                   }
                 }
               }
@@ -2550,13 +2476,8 @@
             "description": "present on publish cards (unfoldx.publish-confirm.v3)",
             "properties": {
               "target": {
-                "enum": ["gallery", "douyin", "xiaohongshu", "mock"],
-                "description": "gallery publishes on unfoldx; the others save a draft in the user's connected account, which the user publishes on the platform (mock is the dev environment's stand-in site)"
-              },
-              "account": {
-                "type": ["object", "null"],
-                "description": "draft targets only, the connected account the draft is saved to",
-                "properties": {"account_id": {"type": "string"}, "name": {"type": "string"}}
+                "type": ["string", "null"],
+                "description": "where a confirmation publishes the film; gallery is the public UnfoldX gallery"
               },
               "title": {"type": ["string", "null"]},
               "description": {"type": ["string", "null"]},
@@ -2692,8 +2613,7 @@
           "page_size": {"type": "integer"},
           "next_page": {"type": ["integer", "null"]}
         },
-        "required": ["items", "total", "page", "page_size", "next_page"],
-        "additionalProperties": false
+        "required": ["items", "total", "page", "page_size", "next_page"]
       },
       "SettingsDocument": {
         "type": "object",
@@ -2718,8 +2638,7 @@
           "can_use_brand_kit": {"type": "boolean"},
           "kits": {"type": "array", "items": {"$ref": "#/components/schemas/Brand"}}
         },
-        "required": ["can_use_brand_kit", "kits"],
-        "additionalProperties": false
+        "required": ["can_use_brand_kit", "kits"]
       },
       "CatalogStyles": {
         "type": "object",
@@ -2734,25 +2653,36 @@
           "voices": {"type": "array", "items": {"type": "object"}},
           "custom_voices": {"type": "array", "items": {"type": "object"}}
         },
-        "required": ["language", "voices", "custom_voices"],
-        "additionalProperties": false
+        "required": ["language", "voices", "custom_voices"]
       },
       "CatalogCovers": {
         "type": "object",
         "properties": {
-          "platforms": {"type": "array", "items": {"type": "object"}},
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "aspects"],
+              "properties": {"id": {"type": "string"}, "aspects": {"type": "array", "items": {"type": "string"}}}
+            }
+          },
           "styles": {"type": "array", "items": {"type": "string"}},
           "credits_each": {"type": "integer"},
-          "layouts": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}}, "required": ["id", "name"], "additionalProperties": false}}
+          "layouts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+              "required": ["id", "name"]
+            }
+          }
         },
-        "required": ["platforms", "styles", "credits_each", "layouts"],
-        "additionalProperties": false
+        "required": ["platforms", "styles", "credits_each", "layouts"]
       },
       "Share": {
         "type": "object",
         "properties": {"run_id": {"type": "string"}, "shared": {"type": "boolean"}, "url": {"type": ["string", "null"]}},
-        "required": ["run_id", "shared", "url"],
-        "additionalProperties": false
+        "required": ["run_id", "shared", "url"]
       },
       "CoverState": {
         "type": "object",
@@ -2780,14 +2710,12 @@
       "CoverSelection": {
         "type": "object",
         "properties": {"run_id": {"type": "string"}, "cover": {"type": "object"}, "receipt": {"type": "object"}},
-        "required": ["run_id", "cover", "receipt"],
-        "additionalProperties": false
+        "required": ["run_id", "cover", "receipt"]
       },
       "SpeechSubmission": {
         "type": "object",
         "properties": {"run_id": {"type": "string"}, "command_id": {"type": "string"}, "job_id": {"type": "string"}},
-        "required": ["run_id", "command_id", "job_id"],
-        "additionalProperties": false
+        "required": ["run_id", "command_id", "job_id"]
       },
       "SpeechState": {
         "type": "object",
@@ -2798,24 +2726,6 @@
           "url": {"type": "string"}
         },
         "required": ["run_id", "job_id", "status"],
-        "additionalProperties": true
-      },
-      "PublishingAccounts": {
-        "type": "object",
-        "properties": {"accounts": {"type": "array", "items": {"type": "object"}}, "platforms": {}},
-        "required": ["accounts", "platforms"],
-        "additionalProperties": false
-      },
-      "PublishingDraft": {
-        "type": "object",
-        "properties": {
-          "draft_id": {"type": "string"},
-          "status": {"type": "string"},
-          "retryable": {"type": "boolean"},
-          "next_action": {"type": "string"},
-          "published_url": {"type": ["string", "null"], "description": "Validated platform-returned publication link, or null. Acceptance is not moderation approval or proof of public visibility."}
-        },
-        "required": ["draft_id", "status", "retryable", "next_action", "published_url"],
         "additionalProperties": true
       },
       "ExportFile": {
@@ -2829,8 +2739,7 @@
           "includes_music": {"type": "boolean"},
           "source": {"type": "string"}
         },
-        "required": ["role", "filename"],
-        "additionalProperties": false
+        "required": ["role", "filename"]
       },
       "ExportManifest": {
         "type": "object",
@@ -2841,23 +2750,16 @@
           "unavailable": {"type": "array", "items": {"type": "string"}},
           "note": {"type": "string"}
         },
-        "required": ["run_id", "metadata", "files", "unavailable", "note"],
-        "additionalProperties": false
+        "required": ["run_id", "metadata", "files", "unavailable", "note"]
       },
       "SuperfastSubmission": {
         "type": "object",
         "properties": {
           "job_id": {"type": "string"},
           "command_id": {"type": "string"},
-          "billing": {
-            "type": "object",
-            "properties": {"status": {"const": "not_metered"}, "message": {"type": "string"}},
-            "required": ["status"],
-            "additionalProperties": true
-          }
+          "billing": {"$ref": "#/components/schemas/SuperfastBilling"}
         },
-        "required": ["job_id", "command_id", "billing"],
-        "additionalProperties": false
+        "required": ["job_id", "command_id", "billing"]
       },
       "SuperfastJob": {
         "type": "object",
@@ -2865,12 +2767,7 @@
           "job_id": {"type": "string"},
           "status": {"type": "string"},
           "duration": {"oneOf": [{"type": "null"}, {"$ref": "#/components/schemas/FilmDuration"}]},
-          "billing": {
-            "type": "object",
-            "properties": {"status": {"const": "not_metered"}},
-            "required": ["status"],
-            "additionalProperties": false
-          }
+          "billing": {"$ref": "#/components/schemas/SuperfastBilling"}
         },
         "required": ["job_id", "status", "billing"],
         "additionalProperties": true
@@ -2885,8 +2782,7 @@
           "duration_warning": {"type": "string"},
           "duration_note": {"type": "string"}
         },
-        "required": ["duration_seconds", "target_duration_seconds", "delta_ratio"],
-        "additionalProperties": false
+        "required": ["duration_seconds", "target_duration_seconds", "delta_ratio"]
       },
       "LocalExport": {
         "type": "object",
@@ -2916,24 +2812,158 @@
         "properties": {"brand_asset_id": {"type": "integer"}, "kind": {"type": "string"}},
         "required": ["brand_asset_id", "kind"],
         "additionalProperties": true
+      },
+      "SuperfastBilling": {
+        "type": "object",
+        "required": ["status", "credits"],
+        "description": "the job's production hold, read like a run's usage: held until the film settles it or a failure refunds it",
+        "properties": {
+          "status": {"enum": ["not_started", "held", "settled", "refunded"]},
+          "credits": {"type": ["integer", "null"], "description": "held amount, or the charge once settled"}
+        }
+      },
+      "Credits": {
+        "type": "object",
+        "required": ["wallet", "credential", "auto_approve_limit"],
+        "properties": {
+          "wallet": {
+            "type": "object",
+            "required": ["available", "held"],
+            "properties": {
+              "available": {"type": "integer", "description": "credits the account can still spend (open holds already taken out)"},
+              "held": {"type": "integer", "description": "credits held by productions still running"}
+            }
+          },
+          "credential": {
+            "type": "object",
+            "required": [
+              "credential_id",
+              "route_credit_cap",
+              "daily_credit_cap",
+              "approved_last_24h",
+              "daily_remaining",
+              "window",
+              "next_release_at"
+            ],
+            "properties": {
+              "credential_id": {"type": "string"},
+              "route_credit_cap": {"type": "integer", "description": "largest single hold this key may approve by itself"},
+              "daily_credit_cap": {"type": "integer"},
+              "approved_last_24h": {
+                "type": "integer",
+                "description": "holds this key approved in the last 24 hours (cancelled runs still count)"
+              },
+              "daily_remaining": {"type": "integer"},
+              "window": {"const": "rolling_24h"},
+              "next_release_at": {
+                "$ref": "#/components/schemas/Time",
+                "description": "when the oldest approval in the window stops counting"
+              }
+            }
+          },
+          "auto_approve_limit": {
+            "type": "integer",
+            "description": "min(route cap, daily remaining, wallet available): the largest route, cover or superfast hold this key can approve now without the user. 0 means every spend needs the user on the web, not that the account cannot spend"
+          }
+        }
+      },
+      "SavedFile": {
+        "type": "object",
+        "required": ["job_id", "path", "bytes", "sha256"],
+        "properties": {
+          "job_id": {"type": "string"},
+          "path": {"type": "string"},
+          "bytes": {"type": "integer"},
+          "sha256": {"type": "string"}
+        }
       }
     }
   },
-  "x-local-tools": {
-    "unfoldx_work_export": {
-      "description": "Download a work as video, cover, exact subtitles, storyboard, transcript, mixed audio or ZIP. Uses local ffmpeg only for derived audio; no invented subtitle times.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "run_id": {"type": "string"},
-          "format": {"enum": ["video", "cover", "subtitles", "storyboard", "transcript", "audio", "zip"]},
-          "out": {"type": "string"},
-          "overwrite": {"type": "boolean"}
-        },
-        "required": ["run_id", "format", "out"],
-        "additionalProperties": false
-      },
-      "output": {"$ref": "#/components/schemas/LocalExport"}
-    }
+  "x-mcp-tools": {
+    "unfoldx_capabilities": {"toolset": "core", "operations": {"": "capabilities"}},
+    "unfoldx_credits": {
+      "toolset": "core",
+      "operations": {"": "getCredits"},
+      "description": "What this key can still spend today. Read auto_approve_limit before answering a route card, generating covers or submitting superfast: a hold above it comes back approval_required for the user to confirm on the web."
+    },
+    "unfoldx_catalog": {
+      "toolset": "core",
+      "description": "Choices the main agent and the cover/voice tools accept.",
+      "operations": {"styles": "catalog_styles", "voices": "catalog_voices", "covers": "catalog_covers"}
+    },
+    "unfoldx_workspaces": {
+      "toolset": "core",
+      "description": "Workspaces (one main-agent conversation each): list them by title or run state, or get one with its runs.",
+      "operations": {"list": "listWorkspaces", "get": "getWorkspace"}
+    },
+    "unfoldx_run_get": {
+      "toolset": "core",
+      "description": "One run (one message to the main agent): its state, progress events after a cursor, open confirmation cards, result, or credit usage; `command` finds the run a submit started when its response was lost.",
+      "operations": {
+        "status": "getRun",
+        "events": "getRunEvents",
+        "questions": "getRunQuestions",
+        "result": "getRunResult",
+        "usage": "getRunUsage",
+        "command": "getCommand"
+      }
+    },
+    "unfoldx_run_submit": {
+      "toolset": "core",
+      "operations": {"": "submitRun"},
+      "description": "Send the main agent a message: a new video, or a follow-up in workspace_id. Choose command_id BEFORE calling and reuse it on every retry."
+    },
+    "unfoldx_run_answer": {"toolset": "core", "operations": {"": "answerRun"}},
+    "unfoldx_run_cancel": {"toolset": "core", "operations": {"": "cancelRun"}},
+    "unfoldx_materials": {
+      "toolset": "core",
+      "description": "Uploaded materials: search the library, or get one by id.",
+      "operations": {"list": "materials_list", "get": "getMaterial"}
+    },
+    "unfoldx_material_upload": {"toolset": "core", "local": "completeMaterialUpload"},
+    "unfoldx_work_export": {"toolset": "core", "local": {"$ref": "#/components/schemas/LocalExport"}},
+    "unfoldx_works": {
+      "toolset": "works",
+      "description": "Finished works: list them, get one, or list the exports it offers.",
+      "operations": {"list": "works_list", "get": "work_get", "exports": "work_exports"}
+    },
+    "unfoldx_share_get": {"toolset": "shares", "operations": {"": "share_show"}},
+    "unfoldx_share_write": {
+      "toolset": "shares",
+      "description": "Create or revoke the public share link of an owned work.",
+      "operations": {"create": "share_create", "revoke": "share_revoke"}
+    },
+    "unfoldx_covers_get": {"toolset": "covers", "operations": {"": "covers_status"}},
+    "unfoldx_covers_write": {
+      "toolset": "covers",
+      "description": "Generate covers for a run (held against the key's budget) or select one.",
+      "operations": {"generate": "covers_generate", "select": "cover_select"}
+    },
+    "unfoldx_speech_get": {"toolset": "speech", "operations": {"": "speech_status"}},
+    "unfoldx_speech_preview": {"toolset": "speech", "operations": {"": "speech_preview"}},
+    "unfoldx_settings_get": {
+      "toolset": "settings",
+      "description": "Read the preferences or the pronunciation dictionary.",
+      "operations": {"preferences": "preferences_show", "pronunciations": "pronunciations_show"}
+    },
+    "unfoldx_settings_update": {
+      "toolset": "settings",
+      "description": "Replace the preferences or the pronunciation dictionary; read its current revision first.",
+      "operations": {"preferences": "preferences_update", "pronunciations": "pronunciations_update"}
+    },
+    "unfoldx_brands_get": {"toolset": "brands", "operations": {"": "brands_list"}},
+    "unfoldx_brand_write": {
+      "toolset": "brands",
+      "description": "Create or update a brand kit, or add or update one of its assets.",
+      "operations": {
+        "create": "brand_create",
+        "update": "brand_update",
+        "asset_create": "brand_asset_create",
+        "asset_update": "brand_asset_update"
+      }
+    },
+    "unfoldx_superfast_submit": {"toolset": "superfast", "operations": {"": "superfast_submit"}},
+    "unfoldx_superfast_get": {"toolset": "superfast", "operations": {"": "superfast_status"}},
+    "unfoldx_superfast_download": {"toolset": "superfast", "local": {"$ref": "#/components/schemas/SavedFile"}}
   }
 }

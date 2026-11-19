@@ -11,12 +11,22 @@ from .api import quote
 from .errors import UnfoldxError
 
 DOCUMENT = json.loads(Path(__file__).with_name("openapi.json").read_text(encoding="utf-8"))
+
+
+def _resolved(parameter):
+    ref = parameter.get("$ref", "")
+    return DOCUMENT["components"]["parameters"][ref.rsplit("/", 1)[1]] if ref else parameter
+
+
 OPERATIONS = {
-    op["x-mcp"]: (path, method.upper(), op)
+    op["operationId"]: (path, method.upper(), {
+        **op, "parameters": [p for p in map(_resolved, methods.get("parameters", []) + op.get("parameters", []))
+                             if p["name"] != "X-Unfoldx-Client"]})
     for path, methods in DOCUMENT["paths"].items()
     for method, op in methods.items()
-    if isinstance(op, dict) and "x-cli" in op
+    if isinstance(op, dict)
 }
+CLI_OPERATIONS = {name: entry for name, entry in OPERATIONS.items() if "x-cli" in entry[2]}
 
 
 def parameters(op):
@@ -61,7 +71,7 @@ def _json(value):
 
 def add_parsers(sub, common, existing):
     groups = dict(existing)
-    for name, (path, method, op) in OPERATIONS.items():
+    for name, (path, method, op) in CLI_OPERATIONS.items():
         group, action = op["x-cli"]
         if group not in groups:
             groups[group] = sub.add_parser(
@@ -146,9 +156,11 @@ def invoke(client, name, values):
     if method == "GET":
         return client.get(path, **query)
     try:
-        return client.request(
+        response = client.request(
             method, path, body=body, retries=2 if op.get("x-idempotent") else 0, headers=header
         )
+        key = header.get("Idempotency-Key")
+        return {"command_id": key, **response} if key and isinstance(response, dict) else response
     except UnfoldxError as exc:
         key = header.get("Idempotency-Key") or body.get("command_id")
         if key:

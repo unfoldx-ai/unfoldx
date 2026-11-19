@@ -32,6 +32,7 @@ from .errors import UnfoldxError
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _MAX_RETRIES = 2
 _MAX_BACKOFF_SEC = 30.0
+_DOWNLOAD_ATTEMPTS = 4
 
 
 class _NoApiRedirect(urllib.request.HTTPRedirectHandler):
@@ -186,21 +187,18 @@ def download_signed(client: ApiClient, url: str, dest: Path, timeout_sec: float,
     _require_safe_url(url, "Download URL")
     if not overwrite and dest.exists():
         raise UnfoldxError("usage", f"File already exists: {dest}. Use --overwrite to replace it.", code="file_exists")
-    total = 0
-    digest = hashlib.sha256()
     fd, name = tempfile.mkstemp(prefix=".unfoldx-", suffix=".part", dir=dest.parent)
     partial = Path(name)
     try:
         with os.fdopen(fd, "wb") as fh:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=client.identity),
-                                        timeout=timeout_sec) as response:
-                while chunk := response.read(1024 * 256):
-                    fh.write(chunk)
-                    digest.update(chunk)
-                    total += len(chunk)
-                expected = response.headers.get('Content-Length')
-                if expected is not None and total != int(expected):
-                    raise http.client.IncompleteRead(b'', int(expected) - total)
+            for attempt in range(_DOWNLOAD_ATTEMPTS):
+                try:
+                    _fetch_rest(client, url, fh, timeout_sec)
+                    break
+                except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
+                    if attempt == _DOWNLOAD_ATTEMPTS - 1:
+                        raise
+        total, digest = _measure(partial)
         if overwrite:
             partial.replace(dest)
         else:
@@ -214,7 +212,35 @@ def download_signed(client: ApiClient, url: str, dest: Path, timeout_sec: float,
                            code="download_failed", retryable=True) from None
     finally:
         partial.unlink(missing_ok=True)
-    return total, digest.hexdigest()
+    return total, digest
+
+
+def _fetch_rest(client: ApiClient, url: str, fh, timeout_sec: float) -> None:
+    """Append what the file still lacks; a server that ignores Range sends it all again."""
+    have = fh.tell()
+    headers = {**client.identity, **({"Range": f"bytes={have}-"} if have else {})}
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout_sec) as response:
+        if have and response.status != 206:
+            fh.seek(0)
+            fh.truncate()
+        elif have and not (response.headers.get("Content-Range") or "").startswith(f"bytes {have}-"):
+            raise http.client.HTTPException("The server resumed at another offset.")
+        got = 0
+        while chunk := response.read(1024 * 256):
+            fh.write(chunk)
+            got += len(chunk)
+        fh.flush()
+        expected = response.headers.get("Content-Length")
+        if expected is not None and got != int(expected):
+            raise http.client.IncompleteRead(b"", int(expected) - got)
+
+
+def _measure(path: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        while chunk := fh.read(1024 * 1024):
+            digest.update(chunk)
+    return path.stat().st_size, digest.hexdigest()
 
 
 def upload_form(client: ApiClient, upload: dict, path: Path, timeout_sec: float) -> None:

@@ -19,13 +19,19 @@ RUN = "run_AAAAAAAAAAAAAAAAAAAAAA"
 
 class FakePlatform:
     def __init__(self):
-        self.truncate_download = False
         self.disconnects = 0
+        self.download_breaks = 0  # film downloads that drop the connection halfway
+        self.ranges = []  # Range headers the film downloads asked for
         self.polls_before_approval = 1
         self.angles = None  # the route card's explanation angles, when a test offers them
         self.token_hiccups = 0  # transient 503s the token endpoint answers first
         self.stalls = 0  # requests that hang past the client's timeout before answering
         self.over_budget = False  # route answers come back approval_required
+        self.credits = {"wallet": {"available": 1840, "held": 300},
+                        "credential": {"credential_id": "cred_0123456789abcdef", "route_credit_cap": 300,
+                                       "daily_credit_cap": 1000, "approved_last_24h": 600, "daily_remaining": 400,
+                                       "window": "rolling_24h", "next_release_at": "2026-11-20T08:00:00Z"},
+                        "auto_approve_limit": 300}
         self.materials: dict[str, dict] = {}
         self.objects: dict[str, bytes] = {}  # what was posted to the fake OSS endpoint
         self.commands: dict[str, dict] = {}  # Idempotency-Key -> submitted body
@@ -152,7 +158,17 @@ class FakePlatform:
         if path == f"/api/v2/runs/{RUN}/questions":
             return self.envelope({"questions": [self.question()]})
         if path == "/api/v2/capabilities":
-            return self.envelope({"api": "unfoldx.v2", "min_client_version": "0.2.0", "scopes": [], "operations": []})
+            # Shaped like dev's answer, including fields this client does not know yet.
+            return self.envelope({"api": "unfoldx.v2", "min_client_version": "0.2.0", "scopes": ["usage:read"],
+                                  "budget": {"route_credit_cap": 300, "daily_credit_cap": 1000},
+                                  "operations": ["GET /runs/{id}/usage", "GET /credits"],
+                                  "routes": [{"route": "template", "label": "模板制作", "label_en": "Template"}],
+                                  "skills": [{"id": "explain", "roles": ["jiang"], "title": "讲解", "says": "讲清楚 X",
+                                              "needs": [], "routes": ["template"], "paid": True, "examples": [],
+                                              "added_later": {"anything": True}}],
+                                  "added_later": 1})
+        if path == "/api/v2/credits":
+            return self.envelope(self.credits)
         if path == "/api/v2/workspaces":
             return self.fail(403, "auth_failed", "insufficient_scope", "该凭据没有 runs:read 权限")
         if path == f"/api/v2/runs/{RUN}/events":
@@ -202,10 +218,34 @@ def serve():
                 self.connection.close()
                 return
             data = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+            if parsed.path.startswith("/files/") and status == 200:
+                fake.ranges.append(self.headers.get("Range"))
+                start = int((self.headers.get("Range") or "bytes=0-")[6:].split("-")[0])
+                if start:
+                    status = 206
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {start}-{len(data) - 1}/{len(data)}")
+                    data = data[start:]
+                if fake.download_breaks:
+                    fake.download_breaks -= 1
+                    if status == 200:
+                        self.send_response(200)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data[:len(data) // 2])
+                    self.wfile.flush()
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                    self.close_connection = True
+                    return
+                if status == 206:
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
             self.send_response(status)
             self.send_header("Content-Type", "application/octet-stream" if isinstance(payload, bytes)
                              else "application/json")
-            self.send_header("Content-Length", str(len(data) + (10 if fake.truncate_download and parsed.path.startswith("/files/") else 0)))
+            self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
 

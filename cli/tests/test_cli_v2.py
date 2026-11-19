@@ -341,10 +341,19 @@ def test_interrupted_overwrite_preserves_the_existing_file(cli, platform, tmp_pa
     args = ('artifacts', 'download', RUN+'.video', '--out', str(tmp_path/'films'))
     assert cli(*args)[0] == 0
     dest = tmp_path/'films'/RUN/'abc123.mp4'
-    platform.truncate_download = True
+    platform.download_breaks = 99
     code, out, _ = cli(*args, '--overwrite')
     assert code == 6 and out['error']['code'] == 'download_failed'
     assert dest.read_bytes() == FILM and not list(dest.parent.glob('*.part'))
+
+
+def test_a_download_that_drops_midway_resumes_where_it_stopped(cli, platform, tmp_path):
+    _login(cli)
+    platform.download_breaks = 2
+    code, out, _ = cli('artifacts', 'download', RUN+'.video', '--out', str(tmp_path/'films'))
+    assert code == 0 and (tmp_path/'films'/RUN/'abc123.mp4').read_bytes() == FILM
+    assert out['data']['sha256'] == hashlib.sha256(FILM).hexdigest()
+    assert platform.ranges[0] is None and all(r and r != 'bytes=0-' for r in platform.ranges[1:])
 
 
 def test_completed_without_video_shows_the_reply_instead_of_claiming_delivery(capsys):
@@ -383,11 +392,11 @@ def test_superfast_cli_retains_command_identity(cli, platform, monkeypatch):
         if path=='/api/v2/superfast/jobs':
             assert headers['Idempotency-Key']=='superfast-cli-01'
             assert body=={'chat':'月相'}
-            return platform.envelope({'job_id':'sf_123456789012','command_id':headers['Idempotency-Key'],'billing':{'status':'not_metered'}})
+            return platform.envelope({'job_id':'sf_123456789012','command_id':headers['Idempotency-Key'],'billing':{'status':'held','credits':120}})
         return original(method,path,query,headers,body)
     monkeypatch.setattr(platform,'handle',handle)
     code,out,_=cli('superfast','submit','--chat','月相','--command-id','superfast-cli-01')
-    assert code==0 and out['data']['billing']['status']=='not_metered'
+    assert code==0 and out['data']['billing']=={'status':'held','credits':120}
 
 
 def test_export_zip_contains_real_files_and_keeps_existing_archive(cli, platform, tmp_path, monkeypatch):
@@ -425,7 +434,7 @@ def test_superfast_download_creates_job_directory_and_preserves_existing_file(cl
     original = platform.handle
     def handle(method, path, query, headers, body):
         if path == '/api/v2/superfast/jobs/sf_123456789012/access':
-            return platform.envelope({'url': platform.base + '/files/film.mp4', 'billing': {'status': 'not_metered'}})
+            return platform.envelope({'url': platform.base + '/files/film.mp4', 'billing': {'status': 'settled', 'credits': 120}})
         if path == '/files/film.mp4':
             return 200, FILM
         return original(method, path, query, headers, body)
@@ -478,3 +487,26 @@ def test_every_request_says_it_comes_from_the_cli(cli, platform, tmp_path):
     assert cli("artifacts", "download", f"{RUN}.video", "--out", str(tmp_path / "films"))[0] == 0
     assert platform.objects and len(platform.clients) > 5
     assert set(platform.clients) == {"cli"}
+
+
+def test_credits_says_what_the_key_can_still_approve_today(cli, platform):
+    _login(cli)
+    code, out, _ = cli('credits')
+    assert code == 0 and out['data']['auto_approve_limit'] == 300
+    assert out['data']['credential']['daily_remaining'] == 400 and out['data']['wallet']['held'] == 300
+
+
+def test_tty_credits_explains_a_zero_budget_without_claiming_the_account_cannot_spend(capsys):
+    from unfoldx_cli.output import Emitter
+    Emitter(False).result({'wallet': {'available': 5000, 'held': 0}, 'auto_approve_limit': 0,
+                           'credential': {'credential_id': 'cred_x', 'route_credit_cap': 0, 'daily_credit_cap': 0,
+                                          'approved_last_24h': 0, 'daily_remaining': 0, 'window': 'rolling_24h',
+                                          'next_release_at': None}})
+    text = capsys.readouterr().out
+    assert '能自动确认 0 积分' in text and '钱包可用 5000' in text and '网页上确认' in text
+
+
+def test_tty_superfast_shows_the_held_credits(capsys):
+    from unfoldx_cli.output import Emitter
+    Emitter(False).result({'job_id': 'sf_123456789012', 'command_id': 'c', 'billing': {'status': 'held', 'credits': 120}})
+    assert '已预扣 120 积分' in capsys.readouterr().out

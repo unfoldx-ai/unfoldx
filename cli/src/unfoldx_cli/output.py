@@ -41,12 +41,31 @@ class Emitter:
             print(f"hint: this error is retryable{after}.", file=sys.stderr)
 
 
+_BILLING = {'not_started': '尚未预扣积分。', 'held': '已预扣 {credits} 积分，成片后结算，失败退回。',
+            'settled': '已结算 {credits} 积分。', 'refunded': '预扣的积分已退回。'}
+
+
+def _credits(data: dict) -> list[str]:
+    wallet, key, limit = data['wallet'], data['credential'], data['auto_approve_limit']
+    lines = [f"本 key 现在能自动确认 {limit} 积分（24 小时内剩余 {key['daily_remaining']}/{key['daily_credit_cap']}，"
+             f"单次上限 {key['route_credit_cap']}）",
+             f"钱包可用 {wallet['available']} 积分，生产中预扣 {wallet['held']} 积分"]
+    if limit == 0:
+        lines.append('每笔花费都要用户在网页上确认；这不代表账户不能花钱。')
+    if key.get('next_release_at'):
+        lines.append(f"最早一笔确认在 {key['next_release_at']} 后不再计入 24 小时额度")
+    return lines
+
+
 def _human(data: dict) -> list[str]:
     """Human output is a view of the same data; never invent answers or infer permission."""
+    if 'auto_approve_limit' in data:
+        return _credits(data)
     if 'job_id' in data:
         lines = [f"任务: {data['job_id']}  状态: {data.get('status', '已下载' if data.get('path') else '已提交')}"]
-        if (data.get('billing') or {}).get('status') == 'not_metered':
-            lines.append('尚未接入积分账本；不是免费承诺，主 Agent 积分预算不适用。')
+        billing = data.get('billing') or {}
+        if billing.get('status') in _BILLING:
+            lines.append(_BILLING[billing['status']].format(credits=billing.get('credits')))
         if data.get('duration'):
             duration = data['duration']
             measured, target, delta = (duration.get(k) for k in ('duration_seconds', 'target_duration_seconds', 'delta_ratio'))
