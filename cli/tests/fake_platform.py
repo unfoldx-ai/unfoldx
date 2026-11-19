@@ -22,6 +22,8 @@ class FakePlatform:
         self.disconnects = 0
         self.download_breaks = 0  # film downloads that drop the connection halfway
         self.ranges = []  # Range headers the film downloads asked for
+        self.signed_url_expired = False  # film URLs answer 403
+        self.file_requests = 0
         self.polls_before_approval = 1
         self.angles = None  # the route card's explanation angles, when a test offers them
         self.token_hiccups = 0  # transient 503s the token endpoint answers first
@@ -129,7 +131,8 @@ class FakePlatform:
                                   "budget": {"route_credit_cap": 300, "daily_credit_cap": 1000},
                                   "expires_at": "2027-01-28T00:00:00Z"})
         if path.startswith("/files/"):
-            return 200, FILM
+            self.file_requests += 1
+            return (403, b"expired") if self.signed_url_expired else (200, FILM)
         if path == "/oss" and method == "POST":
             fields = _multipart(headers, body)
             self.objects[fields["key"].decode()] = fields["file"]
