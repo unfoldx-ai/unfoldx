@@ -14,11 +14,10 @@ sys.path[:0] = [str(UNFOLDX / "cli" / "tests")]
 
 from fake_platform import RUN, TOKEN, serve  # noqa: E402
 
-READS = {"unfoldx_capabilities", "unfoldx_whoami", "unfoldx_workspaces_list", "unfoldx_workspace_get",
-         "unfoldx_run_status", "unfoldx_run_events", "unfoldx_run_questions", "unfoldx_run_result",
-         "unfoldx_run_usage", "unfoldx_artifact_get", "unfoldx_material_get", "unfoldx_command_get"}
-WRITES = {"unfoldx_artifact_access", "unfoldx_material_upload", "unfoldx_run_submit", "unfoldx_run_answer",
-          "unfoldx_run_cancel"}
+CORE_READS = {"unfoldx_capabilities", "unfoldx_credits", "unfoldx_catalog", "unfoldx_workspaces", "unfoldx_run_get",
+              "unfoldx_materials"}
+CORE_WRITES = {"unfoldx_material_upload", "unfoldx_work_export", "unfoldx_run_submit", "unfoldx_run_answer",
+               "unfoldx_run_cancel"}
 
 
 @pytest.fixture
@@ -36,54 +35,76 @@ def _logged_in(platform):
     save_token(platform.base + "/api", TOKEN)
 
 
-def _session(action):
+def _session(action, **options):
     from mcp.client.client import Client
     from unfoldx_mcp.server import build_server
 
     async def run():
-        async with Client(build_server()) as client:
+        async with Client(build_server(**options)) as client:
             return await action(client)
     return anyio.run(run)
 
 
-def _call(name, arguments=None):
-    return _session(lambda client: client.call_tool(name, arguments or {}))
+def _call(name, arguments=None, **options):
+    return _session(lambda client: client.call_tool(name, arguments or {}), **options)
+
+
+def _status():
+    return _call("unfoldx_run_get", {"method": "status", "run_id": RUN})
+
+
+def test_default_server_offers_only_the_core_tools(platform):
+    names = {tool.name for tool in _session(lambda client: client.list_tools()).tools}
+    assert names == CORE_READS | CORE_WRITES
 
 
 def test_every_tool_declares_object_schemas_and_honest_hints(platform):
-    tools = {tool.name: tool for tool in _session(lambda client: client.list_tools()).tools}
-    assert READS | WRITES <= set(tools)
+    from unfoldx_mcp.contracts import TOOLSETS
+    tools = {tool.name: tool for tool in _session(lambda client: client.list_tools(), toolsets=set(TOOLSETS)).tools}
+    assert len(tools) == 25
     for tool in tools.values():
         assert tool.input_schema["type"] == "object"
         assert tool.output_schema["type"] == "object" and tool.output_schema["oneOf"]
-    assert all(tools[name].annotations.read_only_hint is True for name in READS)
-    assert all(tools[name].annotations.read_only_hint is False for name in WRITES)
-    access = tools["unfoldx_artifact_access"].annotations
-    assert access.read_only_hint is False and access.idempotent_hint is False
+    assert all(tools[name].annotations.read_only_hint is True for name in CORE_READS)
+    assert all(tools[name].annotations.read_only_hint is False for name in CORE_WRITES)
     assert tools["unfoldx_run_submit"].annotations.idempotent_hint is True  # keyed by command_id
     assert tools["unfoldx_run_cancel"].annotations.destructive_hint is True
+    assert tools["unfoldx_run_get"].input_schema["properties"]["method"]["enum"] == [
+        "status", "events", "questions", "result", "usage", "command"]
 
 
 def test_reads_return_the_v2_envelope_as_structured_content_and_text(platform):
     _logged_in(platform)
     platform.run_states = ["waiting_input"]
-    status = _call("unfoldx_run_status", {"run_id": RUN})
+    status = _status()
     assert status.is_error is False
     assert status.structured_content["schema"] == "unfoldx.v2" and status.structured_content["ok"] is True
     assert status.structured_content["data"]["question"]["approval_url"].endswith("/chat/abc123")
     assert json.loads(status.content[0].text) == status.structured_content
 
-    access = _call("unfoldx_artifact_access", {"artifact_id": f"{RUN}.video"})
-    assert access.structured_content["data"]["url"].startswith(platform.base + "/files/")
+
+def test_credits_tell_the_agent_how_much_it_may_approve_alone(platform):
+    _logged_in(platform)
+    credits = _call("unfoldx_credits")
+    assert credits.is_error is False, credits.structured_content
+    assert credits.structured_content["data"]["auto_approve_limit"] == 300
+    assert credits.structured_content["data"]["credential"]["window"] == "rolling_24h"
+
+
+def test_capabilities_with_fields_this_client_does_not_know_still_come_back(platform):
+    _logged_in(platform)
+    capabilities = _call("unfoldx_capabilities")
+    assert capabilities.is_error is False, capabilities.structured_content
+    assert capabilities.structured_content["data"]["skills"][0]["id"] == "explain"
 
 
 def test_business_failures_are_tool_errors_with_the_same_envelope(platform):
-    missing = _call("unfoldx_run_status", {"run_id": RUN})
+    missing = _status()
     assert missing.is_error is True and missing.structured_content["error"]["code"] == "not_logged_in"
     assert "unfoldx login" in missing.structured_content["error"]["message"]
 
     _logged_in(platform)
-    refused = _call("unfoldx_workspaces_list")
+    refused = _call("unfoldx_workspaces", {"method": "list"})
     assert refused.is_error is True and refused.structured_content["ok"] is False
     assert refused.structured_content["error"]["code"] == "insufficient_scope"
     assert json.loads(refused.content[0].text) == refused.structured_content
@@ -117,7 +138,10 @@ def test_submit_answer_and_cancel_go_through_the_same_api(platform, tmp_path):
 
 def test_sdk_argument_errors_keep_the_public_envelope(platform):
     _logged_in(platform)
-    result = _call('unfoldx_run_events', {'run_id': RUN, 'after_seq': -1})
+    result = _call('unfoldx_run_get', {'method': 'events', 'run_id': RUN, 'after_seq': -1})
+    assert result.is_error is True
+    assert result.structured_content['error']['code'] == 'invalid_arguments'
+    result = _call('unfoldx_run_get', {'run_id': RUN})
     assert result.is_error is True
     assert result.structured_content['ok'] is False
     assert result.structured_content['error']['code'] == 'invalid_arguments'
@@ -140,7 +164,7 @@ def test_lost_submit_response_preserves_identity_and_reports_transport_error(pla
     error = _call('unfoldx_run_submit', args)
     assert error.is_error and error.structured_content['error']['code'] == 'connection_failed'
     assert error.structured_content['error']['details']['command_id'] == args['command_id']
-    found = _call('unfoldx_command_get', {'command_id': args['command_id']})
+    found = _call('unfoldx_run_get', {'method': 'command', 'command_id': args['command_id']})
     assert found.structured_content['data']['run_id'] == RUN
     retried = _call('unfoldx_run_submit', args)
     assert retried.structured_content['data']['idempotent_replay'] and len(platform.commands) == 1
@@ -154,42 +178,38 @@ def test_output_schema_rejects_a_malformed_server_run(platform, monkeypatch):
             return platform.envelope({'run_id': RUN, 'state': 'invented'})
         return original(method, path, query, headers, body)
     monkeypatch.setattr(platform, 'handle', invalid)
-    result = _call('unfoldx_run_status', {'run_id': RUN})
+    result = _status()
     assert result.is_error and result.structured_content['error']['code'] == 'invalid_response'
 
 
 def test_resource_tools_validate_before_writing_and_explain_scopes(platform):
+    from unfoldx_mcp.contracts import TOOLSETS
     _logged_in(platform)
-    tools={t.name:t for t in _session(lambda c:c.list_tools()).tools}
-    assert tools['unfoldx_materials_list'].annotations.read_only_hint
-    assert tools['unfoldx_share_revoke'].annotations.destructive_hint
-    assert 'settings:write' in tools['unfoldx_pronunciations_update'].description
-    result=_call('unfoldx_share_revoke',{'run_id':RUN,'confirm':False})
+    tools={t.name:t for t in _session(lambda c:c.list_tools(), toolsets=set(TOOLSETS)).tools}
+    assert tools['unfoldx_works'].annotations.read_only_hint
+    assert tools['unfoldx_share_write'].annotations.destructive_hint
+    assert 'settings:write' in tools['unfoldx_settings_update'].description
+    result=_call('unfoldx_share_write',{'method':'revoke','run_id':RUN,'confirm':False}, toolsets={'shares'})
     assert result.is_error and result.structured_content['error']['code']=='invalid_arguments'
     assert not any(method=='DELETE' for method,path,body in platform.requests)
 
 
 def test_readonly_toolsets_exclude_writes_and_refuse_direct_calls(platform):
-    from mcp.client.client import Client
-    from unfoldx_mcp.server import build_server
     _logged_in(platform)
-    async def scenario():
-        async with Client(build_server(toolsets={'shares'}, read_only=True)) as client:
-            names={t.name for t in (await client.list_tools()).tools}
-            assert 'unfoldx_share_show' in names
-            assert 'unfoldx_share_revoke' not in names and 'unfoldx_run_submit' not in names
-            refused=await client.call_tool('unfoldx_share_revoke',{'run_id':RUN,'confirm':True})
-            assert refused.is_error and refused.structured_content['error']['code']=='tool_disabled'
-    anyio.run(scenario)
-    assert not any(method=='DELETE' for method,path,body in platform.requests)
+    names={t.name for t in _session(lambda c:c.list_tools(), toolsets={'shares'}, read_only=True).tools}
+    assert names == {'unfoldx_share_get'}
+    refused=_call('unfoldx_share_write',{'method':'revoke','run_id':RUN,'confirm':True}, toolsets={'shares'}, read_only=True)
+    assert refused.is_error and refused.structured_content['error']['code']=='tool_disabled'
+    assert _call('unfoldx_run_submit',{'goal':'x','command_id':'mcp-off-0001'}, toolsets={'shares'}).structured_content[
+        'error']['code']=='tool_disabled'
+    assert not any(method in ('DELETE', 'POST') for method,path,body in platform.requests)
 
 
-def test_memory_deletes_and_platform_logins_are_not_tools(platform):
+def test_memory_deletes_publishing_and_platform_logins_are_not_tools(platform):
+    from unfoldx_mcp.contracts import TOOLSETS
     _logged_in(platform)
-    names={t.name for t in _session(lambda c:c.list_tools()).tools}
-    assert not {n for n in names if 'memory' in n or 'login' in n or n.endswith('_delete')}
-    assert {n for n in names if 'publishing' in n} == {
-        'unfoldx_publishing_accounts', 'unfoldx_publishing_drafts', 'unfoldx_publishing_draft', 'unfoldx_publishing_retry'}
+    names={t.name for t in _session(lambda c:c.list_tools(), toolsets=set(TOOLSETS)).tools}
+    assert not {n for n in names if 'memory' in n or 'login' in n or 'publishing' in n or n.endswith('_delete')}
     refused=_call('unfoldx_memory_show',{})
     assert refused.is_error and refused.structured_content['error']['code']=='unknown_tool'
 
@@ -199,6 +219,6 @@ def test_every_request_says_it_comes_from_the_mcp_server(platform, tmp_path):
     notes = tmp_path / "notes.md"
     notes.write_text("# 量子纠缠", encoding="utf-8")
     assert _call("unfoldx_material_upload", {"path": str(notes)}).is_error is False
-    assert _call("unfoldx_run_status", {"run_id": RUN}).is_error is False
+    assert _status().is_error is False
     assert platform.objects and len(platform.clients) >= 4
     assert set(platform.clients) == {"mcp"}

@@ -1,6 +1,6 @@
 ---
 name: doc-to-video
-description: Ask the UnfoldX main agent for an explainer video from a topic, files or links, follow the run to the finished film and download it, using the `unfoldx` CLI. Use when the user wants a video made on UnfoldX, a follow-up change to one ("make the opening shorter"), its progress, an answer to its route or storyboard card, or the film file. Also use for UnfoldX material search, work exports, covers, audition, publishing-account receipts, brand/preferences/memory management, or explicitly requested superfast generation.
+description: Ask the UnfoldX main agent for an explainer video from a topic, files or links, follow the run to the finished film and download it, using the `unfoldx` CLI. Use when the user wants a video made on UnfoldX, a follow-up change to one ("make the opening shorter"), its progress, an answer to its route or storyboard card, or the film file. Also use for UnfoldX material search, work exports, covers, audition, today's remaining credits, brand/preferences/memory management, or explicitly requested superfast generation.
 ---
 
 # doc-to-video
@@ -34,9 +34,10 @@ runs through the `unfoldx` CLI. It never generates video locally.
      means a new film is delivered. If no film was delivered, explain the reply and decide the
      next message with the user’s existing authorization; do not blindly resubmit.
    - exit 5 with `error.code = question_open`: the main agent is asking something (a
-     production route with its credit quote, a storyboard, publishing). Show the user the
+     production route with its credit quote, a storyboard). Show the user the
      question and quotes. For supported cards use their `answer_schema` and `answer_examples`;
-     unsupported cards have `answerable: false` and require their approval URL. If the user chose a route, `unfoldx runs answer <run_id> --route <route> --json`;
+     unsupported cards have `answerable: false` and require their approval URL. Run `unfoldx credits --json` first: a quote's `hold` above `auto_approve_limit` will come back
+     `approval_required`, so say so up front. If the user chose a route, `unfoldx runs answer <run_id> --route <route> --json`;
      exit 5 `approval_required` means it is above the budget they granted: give them
      `error.details.approval_url` to confirm on the web. Never pick a route for them, never retry
      around the budget. Then `runs wait` again.
@@ -78,10 +79,8 @@ with `catalogs`. Do not upload duplicates or guess IDs. Read question.answer_sch
 
 Use `speech preview` only on an existing review scene; carry its exact dictionary revision and explicitly select
 completed audition IDs in the answer. For covers, read the catalog price, request one keyed generation within the
-credential budget, then show actual candidates before selecting. Sharing/publishing/account linking requires the
-user's explicit intent and the corresponding non-default grant. A failed/unknown publish receipt is not permission
-to create another remote upload; follow next_action. `published_url` may be null even after the platform accepts a
-publish request; acceptance does not prove moderation approval or public visibility.
+credential budget, then show actual candidates before selecting. Sharing requires the user's explicit intent and the
+corresponding non-default grant. UnfoldX no longer publishes to video platforms on the user's behalf.
 
 For delivery, prefer `works export RUN --format zip --out DIR`; use separate per-run directories. Preserve old
 versions unless the user requests overwrite. Exact subtitle files may be unavailable; show that fact and offer the
@@ -92,7 +91,8 @@ Keep unrelated fields and respect consent. Brand image assets must reference the
 
 Only choose superfast when the user explicitly requests it and capabilities says it is enabled. It uses
 `superfast submit/status/wait/download`, not runs/route answer. Save command_id before submission; reuse it only
-for the same request. Explain `not_metered` truthfully; do not imply credit caps apply. Verify request_kind,
+for the same request. Its hold counts against the key budget like a route card: check `unfoldx credits` first, and on
+`approval_required` hand the user the approval URL. Verify request_kind,
 terminal state, actual playable download and account/ledger facts, keeping streaming latency separate from playback.
 For source_unreadable, obtain complete readable material instead of retrying unchanged. Editing needs the full
 returned storyboard and its parent_job_id; an unavailable parent workspace is an explicit refusal.

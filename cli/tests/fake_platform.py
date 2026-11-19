@@ -26,6 +26,11 @@ class FakePlatform:
         self.token_hiccups = 0  # transient 503s the token endpoint answers first
         self.stalls = 0  # requests that hang past the client's timeout before answering
         self.over_budget = False  # route answers come back approval_required
+        self.credits = {"wallet": {"available": 1840, "held": 300},
+                        "credential": {"credential_id": "cred_0123456789abcdef", "route_credit_cap": 300,
+                                       "daily_credit_cap": 1000, "approved_last_24h": 600, "daily_remaining": 400,
+                                       "window": "rolling_24h", "next_release_at": "2026-11-20T08:00:00Z"},
+                        "auto_approve_limit": 300}
         self.materials: dict[str, dict] = {}
         self.objects: dict[str, bytes] = {}  # what was posted to the fake OSS endpoint
         self.commands: dict[str, dict] = {}  # Idempotency-Key -> submitted body
@@ -152,7 +157,17 @@ class FakePlatform:
         if path == f"/api/v2/runs/{RUN}/questions":
             return self.envelope({"questions": [self.question()]})
         if path == "/api/v2/capabilities":
-            return self.envelope({"api": "unfoldx.v2", "min_client_version": "0.2.0", "scopes": [], "operations": []})
+            # Shaped like dev's answer, including fields this client does not know yet.
+            return self.envelope({"api": "unfoldx.v2", "min_client_version": "0.2.0", "scopes": ["usage:read"],
+                                  "budget": {"route_credit_cap": 300, "daily_credit_cap": 1000},
+                                  "operations": ["GET /runs/{id}/usage", "GET /credits"],
+                                  "routes": [{"route": "template", "label": "模板制作", "label_en": "Template"}],
+                                  "skills": [{"id": "explain", "roles": ["jiang"], "title": "讲解", "says": "讲清楚 X",
+                                              "needs": [], "routes": ["template"], "paid": True, "examples": [],
+                                              "added_later": {"anything": True}}],
+                                  "added_later": 1})
+        if path == "/api/v2/credits":
+            return self.envelope(self.credits)
         if path == "/api/v2/workspaces":
             return self.fail(403, "auth_failed", "insufficient_scope", "该凭据没有 runs:read 权限")
         if path == f"/api/v2/runs/{RUN}/events":

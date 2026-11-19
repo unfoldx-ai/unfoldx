@@ -50,8 +50,8 @@ have step-by-step instructions. The extension source is not in this repository.
 - **One contract.** The CLI and the MCP server are adapters over the same HTTP API
   and answer with the same `unfoldx.v2` envelope.
 - **Agent-first, user-approved.** Agents follow runs with resumable cursors and
-  closed-set errors; spending above the credential's budget and publishing are
-  confirmed by the user on the web.
+  closed-set errors; `unfoldx credits` says what a key may still spend today, and
+  spending above that budget is confirmed by the user on the web.
 - **Fail loud, leak nothing.** Errors are actionable but never expose server
   internals; tokens are redacted from every output path and bound to the API
   that issued them.
