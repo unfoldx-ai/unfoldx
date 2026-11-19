@@ -341,10 +341,19 @@ def test_interrupted_overwrite_preserves_the_existing_file(cli, platform, tmp_pa
     args = ('artifacts', 'download', RUN+'.video', '--out', str(tmp_path/'films'))
     assert cli(*args)[0] == 0
     dest = tmp_path/'films'/RUN/'abc123.mp4'
-    platform.truncate_download = True
+    platform.download_breaks = 99
     code, out, _ = cli(*args, '--overwrite')
     assert code == 6 and out['error']['code'] == 'download_failed'
     assert dest.read_bytes() == FILM and not list(dest.parent.glob('*.part'))
+
+
+def test_a_download_that_drops_midway_resumes_where_it_stopped(cli, platform, tmp_path):
+    _login(cli)
+    platform.download_breaks = 2
+    code, out, _ = cli('artifacts', 'download', RUN+'.video', '--out', str(tmp_path/'films'))
+    assert code == 0 and (tmp_path/'films'/RUN/'abc123.mp4').read_bytes() == FILM
+    assert out['data']['sha256'] == hashlib.sha256(FILM).hexdigest()
+    assert platform.ranges[0] is None and all(r and r != 'bytes=0-' for r in platform.ranges[1:])
 
 
 def test_completed_without_video_shows_the_reply_instead_of_claiming_delivery(capsys):

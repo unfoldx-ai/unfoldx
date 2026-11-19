@@ -19,8 +19,9 @@ RUN = "run_AAAAAAAAAAAAAAAAAAAAAA"
 
 class FakePlatform:
     def __init__(self):
-        self.truncate_download = False
         self.disconnects = 0
+        self.download_breaks = 0  # film downloads that drop the connection halfway
+        self.ranges = []  # Range headers the film downloads asked for
         self.polls_before_approval = 1
         self.angles = None  # the route card's explanation angles, when a test offers them
         self.token_hiccups = 0  # transient 503s the token endpoint answers first
@@ -217,10 +218,34 @@ def serve():
                 self.connection.close()
                 return
             data = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+            if parsed.path.startswith("/files/") and status == 200:
+                fake.ranges.append(self.headers.get("Range"))
+                start = int((self.headers.get("Range") or "bytes=0-")[6:].split("-")[0])
+                if start:
+                    status = 206
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {start}-{len(data) - 1}/{len(data)}")
+                    data = data[start:]
+                if fake.download_breaks:
+                    fake.download_breaks -= 1
+                    if status == 200:
+                        self.send_response(200)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data[:len(data) // 2])
+                    self.wfile.flush()
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                    self.close_connection = True
+                    return
+                if status == 206:
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
             self.send_response(status)
             self.send_header("Content-Type", "application/octet-stream" if isinstance(payload, bytes)
                              else "application/json")
-            self.send_header("Content-Length", str(len(data) + (10 if fake.truncate_download and parsed.path.startswith("/files/") else 0)))
+            self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
 
