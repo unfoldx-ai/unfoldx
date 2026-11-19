@@ -195,6 +195,9 @@ def download_signed(client: ApiClient, url: str, dest: Path, timeout_sec: float,
                 try:
                     _fetch_rest(client, url, fh, timeout_sec)
                     break
+                except urllib.error.HTTPError as exc:
+                    if exc.code < 500 or attempt == _DOWNLOAD_ATTEMPTS - 1:
+                        raise
                 except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
                     if attempt == _DOWNLOAD_ATTEMPTS - 1:
                         raise

@@ -347,6 +347,14 @@ def test_interrupted_overwrite_preserves_the_existing_file(cli, platform, tmp_pa
     assert dest.read_bytes() == FILM and not list(dest.parent.glob('*.part'))
 
 
+def test_an_expired_download_url_is_asked_once_and_leaves_no_file(cli, platform, tmp_path):
+    _login(cli)
+    platform.signed_url_expired = True
+    code, out, _ = cli('artifacts', 'download', RUN+'.video', '--out', str(tmp_path/'films'))
+    assert code == 6 and out['error']['code'] == 'download_failed'
+    assert platform.file_requests == 1 and not list((tmp_path/'films').rglob('*.*'))
+
+
 def test_a_download_that_drops_midway_resumes_where_it_stopped(cli, platform, tmp_path):
     _login(cli)
     platform.download_breaks = 2
