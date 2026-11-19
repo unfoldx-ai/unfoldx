@@ -6,7 +6,10 @@
     "summary": "Delegate explainer videos to the UnfoldX main agent and follow them to the finished film.",
     "description": "The single contract for the `unfoldx` CLI, the `unfoldx-mcp` server and any other client.\n\n* Every response is the `unfoldx.v2` envelope: `data` when `ok` is true, `error` otherwise.\n  Responses carry `Cache-Control: no-store`.\n* `error.type` is a closed set that clients map to exit codes; `error.code` is the precise reason.\n* Public ids only: workspace ids, `run_…`, `<run_id>.video|cover`, `mat_…`, `cred_…`.\n* A workspace is one main-agent conversation; a run is one message to it.\n* Writes run through the same services as the web. `POST /v2/runs` needs an `Idempotency-Key`\n  (the client's command id): the same key and body return the same run, a changed body is 409.\n* A route card is answered on the user's behalf only within the credential's budget; above it the\n  answer is `needs_input/approval_required` with the `approval_url` where the user confirms.\n* Publishing requires explicit publish:confirm scope and a current publish card.\n* Clients name themselves on every request with `X-Unfoldx-Client` (`cli` or `mcp`,\n  `#/components/parameters/UnfoldxClient`).\n"
   },
-  "servers": [{"url": "https://api.unfoldx.ai/api", "description": "production"}, {"url": "https://dev.unfoldx.ai/api", "description": "development site (test accounts only)"}],
+  "servers": [
+    {"url": "https://api.unfoldx.ai/api", "description": "production"},
+    {"url": "https://dev.unfoldx.ai/api", "description": "development site (test accounts only)"}
+  ],
   "security": [{"bearer": []}],
   "paths": {
     "/v2/auth/device": {
@@ -200,7 +203,11 @@
                                 "required": ["workspace_id", "web_url", "runs"],
                                 "properties": {
                                   "workspace_id": {"type": "string"},
-                                  "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+                                  "web_url": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"
+                                  },
                                   "title": {"type": ["string", "null"]},
                                   "updated_at": {"$ref": "#/components/schemas/Time"},
                                   "runs": {"type": "integer", "description": "number of runs"}
@@ -258,7 +265,11 @@
                           "required": ["workspace_id", "web_url", "runs"],
                           "properties": {
                             "workspace_id": {"type": "string"},
-                            "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+                            "web_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"
+                            },
                             "title": {"type": ["string", "null"]},
                             "created_at": {"$ref": "#/components/schemas/Time"},
                             "runs": {"type": "array", "items": {"$ref": "#/components/schemas/Run"}}
@@ -348,7 +359,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [{"$ref": "#/components/schemas/Ok"}, {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}]
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}
+                  ]
                 }
               }
             }
@@ -565,7 +579,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [{"$ref": "#/components/schemas/Ok"}, {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}]
+                  "allOf": [
+                    {"$ref": "#/components/schemas/Ok"},
+                    {"properties": {"data": {"$ref": "#/components/schemas/Run"}}}
+                  ]
                 }
               }
             }
@@ -583,7 +600,11 @@
         "summary": "Events after a cursor. `seq` increases but is not contiguous; dedupe by `seq`.\nThe server answers at once; clients poll. Scope `runs:read`.\n",
         "parameters": [
           {"name": "after_seq", "in": "query", "schema": {"type": "integer", "minimum": 0, "default": 0}},
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}
+          }
         ],
         "responses": {
           "200": {
@@ -841,7 +862,12 @@
         "x-idempotent": true,
         "x-destructive": false,
         "parameters": [
-          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "default": 1}
+          },
           {
             "name": "page_size",
             "in": "query",
@@ -849,7 +875,12 @@
             "schema": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}
           },
           {"name": "q", "in": "query", "required": false, "schema": {"type": "string"}},
-          {"name": "type", "in": "query", "required": false, "schema": {"enum": ["all", "document", "image", "media"]}}
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {"enum": ["all", "document", "image", "media"]}
+          }
         ],
         "responses": {
           "200": {
@@ -994,7 +1025,12 @@
         "x-idempotent": true,
         "x-destructive": false,
         "parameters": [
-          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "default": 1}
+          },
           {
             "name": "page_size",
             "in": "query",
@@ -1328,8 +1364,14 @@
                   "style_id": {"enum": ["auto", "impact", "minimal", "lifestyle", "tech"], "default": "auto"},
                   "headline": {"type": "string", "minLength": 1, "maxLength": 120},
                   "instructions": {"type": "string", "maxLength": 500},
-                  "labels": {"type": "array", "items": {"enum": ["A", "B", "C"]}, "minItems": 1, "maxItems": 3, "uniqueItems": true,
-                    "description": "Layouts to make, one cover each at the catalog credits_each: A 大字标题, B 主体特写, C 图解对比. CLI takes JSON, e.g. [\"A\", \"C\"]."},
+                  "labels": {
+                    "type": "array",
+                    "items": {"enum": ["A", "B", "C"]},
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "uniqueItems": true,
+                    "description": "Layouts to make, one cover each at the catalog credits_each: A 大字标题, B 主体特写, C 图解对比. CLI takes JSON, e.g. [\"A\", \"C\"]."
+                  },
                   "confirm": {
                     "type": "boolean",
                     "const": true,
@@ -1939,7 +1981,12 @@
         "x-idempotent": true,
         "x-destructive": false,
         "parameters": [
-          {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "default": 1}
+          },
           {
             "name": "page_size",
             "in": "query",
@@ -2108,11 +2155,20 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "chat": {"type": "string", "maxLength": 4000, "description": "Goal. Explicit numeric seconds/minutes (1–3600 seconds) become a planner duration budget."},
+                  "chat": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "description": "Goal. Explicit numeric seconds/minutes (1–3600 seconds) become a planner duration budget."
+                  },
                   "web_url": {"type": "string"},
                   "material_id": {"type": "string"},
                   "parent_job_id": {"type": "string"},
-                  "instruction": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "Edit the parent film in one sentence; only the changed shots re-render. The job returns reply, and a question or an edit superfast cannot make completes with reply and no film."},
+                  "instruction": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "description": "Edit the parent film in one sentence; only the changed shots re-render. The job returns reply, and a question or an edit superfast cannot make completes with reply and no film."
+                  },
                   "slides": {
                     "type": "array",
                     "items": {
@@ -2259,7 +2315,10 @@
           }
         }
       },
-      "Error": {"description": "failure", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Failure"}}}}
+      "Error": {
+        "description": "failure",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Failure"}}}
+      }
     },
     "schemas": {
       "Ok": {
@@ -2428,7 +2487,11 @@
         "properties": {
           "run_id": {"type": "string"},
           "workspace_id": {"type": "string"},
-          "web_url": {"type": "string", "format": "uri", "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"},
+          "web_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "the page in the UnfoldX web app where the user watches this run and confirms what it asks"
+          },
           "state": {"$ref": "#/components/schemas/RunState"},
           "created_at": {"$ref": "#/components/schemas/Time"},
           "updated_at": {"$ref": "#/components/schemas/Time"},
@@ -2448,7 +2511,16 @@
       },
       "Question": {
         "type": "object",
-        "required": ["question_id", "contract", "text", "options", "approval_url", "answerable", "answer_schema", "answer_examples"],
+        "required": [
+          "question_id",
+          "contract",
+          "text",
+          "options",
+          "approval_url",
+          "answerable",
+          "answer_schema",
+          "answer_examples"
+        ],
         "properties": {
           "question_id": {"type": "string"},
           "contract": {
@@ -2456,7 +2528,10 @@
             "examples": ["unfoldx.route-choice.v2", "unfoldx.storyboard-review.v1", "unfoldx.publish-confirm.v3"]
           },
           "answerable": {"type": "boolean", "description": "false means this card is visible but requires the approval URL"},
-          "answer_schema": {"type": ["object", "boolean"], "description": "JSON Schema for this exact card; false means not answerable"},
+          "answer_schema": {
+            "type": ["object", "boolean"],
+            "description": "JSON Schema for this exact card; false means not answerable"
+          },
           "answer_examples": {"type": "array", "items": {"$ref": "#/components/schemas/Answer"}},
           "text": {"type": "string"},
           "storyboard": {
@@ -2743,7 +2818,15 @@
           "platforms": {"type": "array", "items": {"type": "object"}},
           "styles": {"type": "array", "items": {"type": "string"}},
           "credits_each": {"type": "integer"},
-          "layouts": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}}, "required": ["id", "name"], "additionalProperties": false}}
+          "layouts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+              "required": ["id", "name"],
+              "additionalProperties": false
+            }
+          }
         },
         "required": ["platforms", "styles", "credits_each", "layouts"],
         "additionalProperties": false
@@ -2813,7 +2896,10 @@
           "status": {"type": "string"},
           "retryable": {"type": "boolean"},
           "next_action": {"type": "string"},
-          "published_url": {"type": ["string", "null"], "description": "Validated platform-returned publication link, or null. Acceptance is not moderation approval or proof of public visibility."}
+          "published_url": {
+            "type": ["string", "null"],
+            "description": "Validated platform-returned publication link, or null. Acceptance is not moderation approval or proof of public visibility."
+          }
         },
         "required": ["draft_id", "status", "retryable", "next_action", "published_url"],
         "additionalProperties": true
