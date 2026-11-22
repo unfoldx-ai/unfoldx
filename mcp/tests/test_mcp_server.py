@@ -61,7 +61,7 @@ def test_default_server_offers_only_the_core_tools(platform):
 def test_every_tool_declares_object_schemas_and_honest_hints(platform):
     from unfoldx_mcp.contracts import TOOLSETS
     tools = {tool.name: tool for tool in _session(lambda client: client.list_tools(), toolsets=set(TOOLSETS)).tools}
-    assert len(tools) == 25
+    assert len(tools) == 27
     for tool in tools.values():
         assert tool.input_schema["type"] == "object"
         assert tool.output_schema["type"] == "object" and tool.output_schema["oneOf"]
@@ -255,3 +255,23 @@ def test_a_response_is_checked_against_the_method_that_was_called(platform, monk
         return original(method, path, query, headers, body)
     monkeypatch.setattr(platform, 'handle', events_shaped)
     assert _status().structured_content['error']['code'] == 'invalid_response'
+
+
+def test_topics_and_schedules_are_their_own_toolsets(platform):
+    from unfoldx_mcp.contracts import TOOLSETS
+    assert {"topics", "schedules"} <= set(TOOLSETS)
+    names = {tool.name for tool in _session(lambda client: client.list_tools(), toolsets={"topics", "schedules"}).tools}
+    assert {"unfoldx_topics", "unfoldx_schedules"} <= names
+    assert "unfoldx_run_submit" not in names
+
+
+def test_the_schedules_tool_lists_a_task_it_created(platform):
+    _logged_in(platform)
+    created = _call("unfoldx_schedules", {"method": "create", "title": "每日选题简报",
+                                          "frequency": {"kind": "daily", "time": "09:00", "timezone": "Asia/Shanghai"},
+                                          "scope": {"topic_ids": ["t-agent"]},
+                                          "deliverable": {"kind": "brief", "angles": 3},
+                                          "notify": "important"}, toolsets={"schedules"})
+    assert created.is_error is False and created.structured_content["data"]["schedule_id"] == 1
+    listed = _call("unfoldx_schedules", {"method": "list"}, toolsets={"schedules"})
+    assert [row["title"] for row in listed.structured_content["data"]["schedules"]] == ["每日选题简报"]

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "UnfoldX public API",
-    "version": "2.7.0",
+    "version": "2.8.0",
     "summary": "Delegate explainer videos to the UnfoldX main agent and follow them to the finished film.",
     "description": "The single contract for the `unfoldx` CLI, the `unfoldx-mcp` server and any other client.\n\n* Every response is the `unfoldx.v2` envelope: `data` when `ok` is true, `error` otherwise.\n  Responses carry `Cache-Control: no-store`.\n* `error.type` is a closed set that clients map to exit codes; `error.code` is the precise reason.\n* Public ids only: workspace ids, `run_…`, `<run_id>.video|cover`, `mat_…`, `cred_…`.\n* A workspace is one main-agent conversation; a run is one message to it.\n* Writes run through the same services as the web. `POST /v2/runs` needs an `Idempotency-Key`\n  (the client's command id): the same key and body return the same run, a changed body is 409.\n* A route card is answered on the user's behalf only within the credential's budget; above it the\n  answer is `needs_input/approval_required` with the `approval_url` where the user confirms.\n* Publishing requires explicit publish:confirm scope and a current publish card.\n* Clients name themselves on every request with `X-Unfoldx-Client` (`cli` or `mcp`,\n  `#/components/parameters/UnfoldxClient`).\n"
   },
@@ -2114,7 +2114,1441 @@
         "x-idempotent": true,
         "x-destructive": false
       }
-    }
+    },
+      "/v2/topics": {
+        "get": {
+          "operationId": "topics_list",
+          "summary": "The topics this account subscribes to, the events it follows and its sources; pick a subject from here before asking for a film.",
+          "description": "The topics this account subscribes to, the events it follows and its sources; pick a subject from here before asking for a film.",
+          "x-cli": [
+            "topics",
+            "list"
+          ],
+          "x-scope": "topics:read",
+          "x-idempotent": true,
+          "x-destructive": false,
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "required": [
+                              "revision",
+                              "topics",
+                              "events",
+                              "sources"
+                            ],
+                            "properties": {
+                              "revision": {
+                                "type": "integer"
+                              },
+                              "topics": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "topic"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "topic": {
+                                      "type": "string"
+                                    },
+                                    "description": {
+                                      "type": "string"
+                                    },
+                                    "cards": {
+                                      "type": "integer"
+                                    },
+                                    "starred": {
+                                      "type": "integer"
+                                    },
+                                    "new": {
+                                      "type": "integer"
+                                    },
+                                    "updated_at": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "events": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    },
+                                    "new": {
+                                      "type": "integer"
+                                    },
+                                    "updated_at": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "sources": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        }
+      },
+      "/v2/topics/subscriptions": {
+        "post": {
+          "operationId": "topics_subscribe",
+          "summary": "Subscribe to a topic by name so it shows up in the topics list and in auto tasks.",
+          "description": "Subscribe to a topic by name so it shows up in the topics list and in auto tasks.",
+          "x-cli": [
+            "topics",
+            "subscribe"
+          ],
+          "x-scope": "topics:write",
+          "x-idempotent": false,
+          "x-destructive": false,
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "topic"
+                  ],
+                  "properties": {
+                    "topic": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "required": [
+                              "revision",
+                              "topics",
+                              "events",
+                              "sources"
+                            ],
+                            "properties": {
+                              "revision": {
+                                "type": "integer"
+                              },
+                              "topics": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "topic"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "topic": {
+                                      "type": "string"
+                                    },
+                                    "description": {
+                                      "type": "string"
+                                    },
+                                    "cards": {
+                                      "type": "integer"
+                                    },
+                                    "starred": {
+                                      "type": "integer"
+                                    },
+                                    "new": {
+                                      "type": "integer"
+                                    },
+                                    "updated_at": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "events": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    },
+                                    "new": {
+                                      "type": "integer"
+                                    },
+                                    "updated_at": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "sources": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        }
+      },
+      "/v2/topics/subscriptions/{key}": {
+        "delete": {
+          "operationId": "topics_unsubscribe",
+          "summary": "Stop subscribing to a topic; its saved cards go with it.",
+          "description": "Stop subscribing to a topic; its saved cards go with it.",
+          "x-cli": [
+            "topics",
+            "unsubscribe"
+          ],
+          "x-scope": "topics:write",
+          "x-idempotent": false,
+          "x-destructive": true,
+          "parameters": [
+            {
+              "name": "key",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "required": [
+                              "revision",
+                              "topics",
+                              "events",
+                              "sources"
+                            ],
+                            "properties": {
+                              "revision": {
+                                "type": "integer"
+                              },
+                              "topics": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "topic"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "topic": {
+                                      "type": "string"
+                                    },
+                                    "description": {
+                                      "type": "string"
+                                    },
+                                    "cards": {
+                                      "type": "integer"
+                                    },
+                                    "starred": {
+                                      "type": "integer"
+                                    },
+                                    "new": {
+                                      "type": "integer"
+                                    },
+                                    "updated_at": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "events": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    },
+                                    "new": {
+                                      "type": "integer"
+                                    },
+                                    "updated_at": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "sources": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        }
+      },
+      "/v2/schedules": {
+        "get": {
+          "operationId": "schedules_list",
+          "summary": "The account's auto tasks: frequency, scope, what each run produces, its state and when it next runs.",
+          "description": "The account's auto tasks: frequency, scope, what each run produces, its state and when it next runs.",
+          "x-cli": [
+            "schedules",
+            "list"
+          ],
+          "x-scope": "schedules:read",
+          "x-idempotent": true,
+          "x-destructive": false,
+          "responses": {
+            "200": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "required": [
+                              "schedules"
+                            ],
+                            "properties": {
+                              "schedules": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "schedule_id",
+                                    "title",
+                                    "state"
+                                  ],
+                                  "properties": {
+                                    "schedule_id": {
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    },
+                                    "frequency": {
+                                      "type": "object",
+                                      "required": [
+                                        "kind",
+                                        "time",
+                                        "timezone"
+                                      ],
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "daily",
+                                            "weekly"
+                                          ]
+                                        },
+                                        "time": {
+                                          "type": "string"
+                                        },
+                                        "weekday": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 7
+                                        },
+                                        "timezone": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "scope": {
+                                      "type": "object",
+                                      "properties": {
+                                        "topic_ids": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "event_ids": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "text": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "deliverable": {
+                                      "type": "object",
+                                      "required": [
+                                        "kind"
+                                      ],
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "brief",
+                                            "video"
+                                          ]
+                                        },
+                                        "angles": {
+                                          "type": "integer"
+                                        },
+                                        "plan": {
+                                          "type": "boolean"
+                                        },
+                                        "route": {
+                                          "type": "string"
+                                        },
+                                        "language": {
+                                          "type": "string"
+                                        },
+                                        "reply_language": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "notify": {
+                                      "type": "string"
+                                    },
+                                    "state": {
+                                      "type": "string"
+                                    },
+                                    "daily_credit_cap": {
+                                      "type": "integer"
+                                    },
+                                    "next_run_at": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "created_at": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "last_run": {
+                                      "type": [
+                                        "object",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        },
+        "post": {
+          "operationId": "schedules_create",
+          "summary": "Add an auto task. It runs on its schedule within the credit cap the account set; creating it starts nothing and spends nothing.",
+          "description": "Add an auto task. It runs on its schedule within the credit cap the account set; creating it starts nothing and spends nothing.",
+          "x-cli": [
+            "schedules",
+            "add"
+          ],
+          "x-scope": "schedules:write",
+          "x-idempotent": false,
+          "x-destructive": false,
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "frequency",
+                    "scope",
+                    "deliverable",
+                    "notify"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "frequency": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "time",
+                        "timezone"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "daily",
+                            "weekly"
+                          ]
+                        },
+                        "time": {
+                          "type": "string"
+                        },
+                        "weekday": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 7
+                        },
+                        "timezone": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "topic_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "event_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "deliverable": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "brief",
+                            "video"
+                          ]
+                        },
+                        "angles": {
+                          "type": "integer"
+                        },
+                        "plan": {
+                          "type": "boolean"
+                        },
+                        "route": {
+                          "type": "string"
+                        },
+                        "language": {
+                          "type": "string"
+                        },
+                        "reply_language": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "notify": {
+                      "type": "string"
+                    },
+                    "daily_credit_cap": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "required": [
+                              "schedule_id",
+                              "title",
+                              "state"
+                            ],
+                            "properties": {
+                              "schedule_id": {
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "frequency": {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "time",
+                                  "timezone"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "daily",
+                                      "weekly"
+                                    ]
+                                  },
+                                  "time": {
+                                    "type": "string"
+                                  },
+                                  "weekday": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 7
+                                  },
+                                  "timezone": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "scope": {
+                                "type": "object",
+                                "properties": {
+                                  "topic_ids": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "event_ids": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "deliverable": {
+                                "type": "object",
+                                "required": [
+                                  "kind"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "brief",
+                                      "video"
+                                    ]
+                                  },
+                                  "angles": {
+                                    "type": "integer"
+                                  },
+                                  "plan": {
+                                    "type": "boolean"
+                                  },
+                                  "route": {
+                                    "type": "string"
+                                  },
+                                  "language": {
+                                    "type": "string"
+                                  },
+                                  "reply_language": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "notify": {
+                                "type": "string"
+                              },
+                              "state": {
+                                "type": "string"
+                              },
+                              "daily_credit_cap": {
+                                "type": "integer"
+                              },
+                              "next_run_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "created_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "last_run": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        }
+      },
+      "/v2/schedules/{schedule_id}": {
+        "get": {
+          "operationId": "schedules_show",
+          "summary": "One auto task with its scope names and its last run.",
+          "description": "One auto task with its scope names and its last run.",
+          "x-cli": [
+            "schedules",
+            "show"
+          ],
+          "x-scope": "schedules:read",
+          "x-idempotent": true,
+          "x-destructive": false,
+          "parameters": [
+            {
+              "name": "schedule_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "required": [
+                              "schedule_id",
+                              "title",
+                              "state"
+                            ],
+                            "properties": {
+                              "schedule_id": {
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "frequency": {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "time",
+                                  "timezone"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "daily",
+                                      "weekly"
+                                    ]
+                                  },
+                                  "time": {
+                                    "type": "string"
+                                  },
+                                  "weekday": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 7
+                                  },
+                                  "timezone": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "scope": {
+                                "type": "object",
+                                "properties": {
+                                  "topic_ids": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "event_ids": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "deliverable": {
+                                "type": "object",
+                                "required": [
+                                  "kind"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "brief",
+                                      "video"
+                                    ]
+                                  },
+                                  "angles": {
+                                    "type": "integer"
+                                  },
+                                  "plan": {
+                                    "type": "boolean"
+                                  },
+                                  "route": {
+                                    "type": "string"
+                                  },
+                                  "language": {
+                                    "type": "string"
+                                  },
+                                  "reply_language": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "notify": {
+                                "type": "string"
+                              },
+                              "state": {
+                                "type": "string"
+                              },
+                              "daily_credit_cap": {
+                                "type": "integer"
+                              },
+                              "next_run_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "created_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "last_run": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        },
+        "patch": {
+          "operationId": "schedules_update",
+          "summary": "Edit an auto task: title, frequency, scope, deliverable, cap, or pause it with state=paused.",
+          "description": "Edit an auto task: title, frequency, scope, deliverable, cap, or pause it with state=paused.",
+          "x-cli": [
+            "schedules",
+            "edit"
+          ],
+          "x-scope": "schedules:write",
+          "x-idempotent": false,
+          "x-destructive": true,
+          "parameters": [
+            {
+              "name": "schedule_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "frequency": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "time",
+                        "timezone"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "daily",
+                            "weekly"
+                          ]
+                        },
+                        "time": {
+                          "type": "string"
+                        },
+                        "weekday": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 7
+                        },
+                        "timezone": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "topic_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "event_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "deliverable": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "brief",
+                            "video"
+                          ]
+                        },
+                        "angles": {
+                          "type": "integer"
+                        },
+                        "plan": {
+                          "type": "boolean"
+                        },
+                        "route": {
+                          "type": "string"
+                        },
+                        "language": {
+                          "type": "string"
+                        },
+                        "reply_language": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "notify": {
+                      "type": "string"
+                    },
+                    "daily_credit_cap": {
+                      "type": "integer"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "paused"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "required": [
+                              "schedule_id",
+                              "title",
+                              "state"
+                            ],
+                            "properties": {
+                              "schedule_id": {
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "frequency": {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "time",
+                                  "timezone"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "daily",
+                                      "weekly"
+                                    ]
+                                  },
+                                  "time": {
+                                    "type": "string"
+                                  },
+                                  "weekday": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 7
+                                  },
+                                  "timezone": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "scope": {
+                                "type": "object",
+                                "properties": {
+                                  "topic_ids": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "event_ids": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "deliverable": {
+                                "type": "object",
+                                "required": [
+                                  "kind"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "brief",
+                                      "video"
+                                    ]
+                                  },
+                                  "angles": {
+                                    "type": "integer"
+                                  },
+                                  "plan": {
+                                    "type": "boolean"
+                                  },
+                                  "route": {
+                                    "type": "string"
+                                  },
+                                  "language": {
+                                    "type": "string"
+                                  },
+                                  "reply_language": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "notify": {
+                                "type": "string"
+                              },
+                              "state": {
+                                "type": "string"
+                              },
+                              "daily_credit_cap": {
+                                "type": "integer"
+                              },
+                              "next_run_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "created_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "last_run": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        },
+        "delete": {
+          "operationId": "schedules_delete",
+          "summary": "Delete an auto task; the runs it already did stay in their sessions.",
+          "description": "Delete an auto task; the runs it already did stay in their sessions.",
+          "x-cli": [
+            "schedules",
+            "remove"
+          ],
+          "x-scope": "schedules:write",
+          "x-idempotent": false,
+          "x-destructive": true,
+          "parameters": [
+            {
+              "name": "schedule_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "properties": {
+                              "schedule_id": {
+                                "type": "integer"
+                              },
+                              "deleted": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        }
+      },
+      "/v2/schedules/{schedule_id}/runs": {
+        "get": {
+          "operationId": "schedules_runs",
+          "summary": "The runs an auto task did, newest first.",
+          "description": "The runs an auto task did, newest first.",
+          "x-cli": [
+            "schedules",
+            "runs"
+          ],
+          "x-scope": "schedules:read",
+          "x-idempotent": true,
+          "x-destructive": false,
+          "parameters": [
+            {
+              "name": "schedule_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "page",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "name": "page_size",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Success",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Ok"
+                      },
+                      {
+                        "properties": {
+                          "data": {
+                            "type": "object",
+                            "required": [
+                              "schedule_id",
+                              "runs"
+                            ],
+                            "properties": {
+                              "schedule_id": {
+                                "type": "integer"
+                              },
+                              "runs": {
+                                "type": "object"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "default": {
+              "$ref": "#/components/responses/Error"
+            }
+          }
+        }
+      }
   },
   "components": {
     "securitySchemes": {
@@ -2964,6 +4398,8 @@
     },
     "unfoldx_superfast_submit": {"toolset": "superfast", "operations": {"": "superfast_submit"}},
     "unfoldx_superfast_get": {"toolset": "superfast", "operations": {"": "superfast_status"}},
-    "unfoldx_superfast_download": {"toolset": "superfast", "local": {"$ref": "#/components/schemas/SavedFile"}}
+    "unfoldx_superfast_download": {"toolset": "superfast", "local": {"$ref": "#/components/schemas/SavedFile"}},
+    "unfoldx_topics": {"toolset": "topics", "description": "What this account wants covered: the topics it subscribes to, the events it follows and its sources. Pick a subject here before asking for a film; subscribe to keep one.", "operations": {"list": "topics_list", "subscribe": "topics_subscribe", "unsubscribe": "topics_unsubscribe"}},
+    "unfoldx_schedules": {"toolset": "schedules", "description": "The account's auto tasks: list, add, edit frequency/scope/cap, pause or delete. Creating one starts nothing and spends nothing; every run stays within the account's cap.", "operations": {"list": "schedules_list", "create": "schedules_create", "get": "schedules_show", "update": "schedules_update", "delete": "schedules_delete", "runs": "schedules_runs"}}
   }
 }

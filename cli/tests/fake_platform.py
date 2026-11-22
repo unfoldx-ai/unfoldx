@@ -34,6 +34,9 @@ class FakePlatform:
                                        "daily_credit_cap": 1000, "approved_last_24h": 600, "daily_remaining": 400,
                                        "window": "rolling_24h", "next_release_at": "2026-11-20T08:00:00Z"},
                         "auto_approve_limit": 300}
+        self.topics: list[dict] = []
+        self.schedules: dict[int, dict] = {}
+        self.next_schedule_id = 1
         self.materials: dict[str, dict] = {}
         self.objects: dict[str, bytes] = {}  # what was posted to the fake OSS endpoint
         self.commands: dict[str, dict] = {}  # Idempotency-Key -> submitted body
@@ -69,7 +72,27 @@ class FakePlatform:
     def run(self, state="queued"):
         return {"run_id": RUN, "workspace_id": "ws_abc123", "web_url": "https://unfoldx.ai/chat/ws_abc123", "state": state, "question": None, "settlement_status": "pending"}
 
+    def topics_view(self):
+        return {"revision": len(self.topics), "topics": self.topics, "events": [], "sources": []}
+
+    def schedule_body(self, body):
+        return {"schedule_id": self.next_schedule_id, "title": body["title"], "frequency": body["frequency"],
+                "scope": body.get("scope") or {}, "deliverable": body["deliverable"],
+                "notify": body.get("notify"), "state": "active", "daily_credit_cap": body.get("daily_credit_cap", 100),
+                "next_run_at": "2026-11-24T01:00:00Z", "last_run": None, "created_at": "2026-11-23T00:00:00Z",
+                "scope_names": {"topics": [], "events": []},
+                "lead_agent": "kai"}
+
     def write(self, method, path, headers, body):
+        if path == "/api/v2/topics/subscriptions":
+            self.topics.append({"key": "t-new", "topic": body["topic"], "description": body.get("description") or "",
+                                "cards": 0, "starred": 0, "new": 0, "updated_at": None})
+            return self.envelope(self.topics_view(), status=201)
+        if path == "/api/v2/schedules":
+            row = self.schedule_body(body)
+            self.schedules[row["schedule_id"]] = row
+            self.next_schedule_id += 1
+            return self.envelope(row, status=201)
         if path == "/api/v2/materials/uploads":
             material_id = f"mat_{len(self.materials):022d}"
             key = f"files/1/{len(self.materials)}_{body['filename']}"
@@ -160,6 +183,29 @@ class FakePlatform:
             return self.envelope(self.run())
         if path == f"/api/v2/runs/{RUN}/questions":
             return self.envelope({"questions": [self.question()]})
+        if path == "/api/v2/topics":
+            return self.envelope(self.topics_view())
+        if path.startswith("/api/v2/topics/subscriptions/") and method == "DELETE":
+            key = path.rsplit("/", 1)[1]
+            self.topics = [row for row in self.topics if row["key"] != key]
+            return self.envelope(self.topics_view())
+        if path == "/api/v2/schedules":
+            return self.envelope({"schedules": list(self.schedules.values())})
+        if path.startswith("/api/v2/schedules/"):
+            parts = path.split("/")
+            schedule_id = int(parts[4])
+            row = self.schedules.get(schedule_id)
+            if row is None:
+                return self.fail(404, "not_found", "not_found")
+            if len(parts) > 5 and parts[5] == "runs":
+                return self.envelope({"schedule_id": schedule_id, "runs": {"runs": [], "has_more": False}})
+            if method == "PATCH":
+                row.update(body)
+                return self.envelope(row)
+            if method == "DELETE":
+                self.schedules.pop(schedule_id)
+                return self.envelope({"schedule_id": schedule_id, "deleted": True})
+            return self.envelope(row)
         if path == "/api/v2/capabilities":
             # Shaped like dev's answer, including fields this client does not know yet.
             return self.envelope({"api": "unfoldx.v2", "min_client_version": "0.2.0", "scopes": ["usage:read"],
