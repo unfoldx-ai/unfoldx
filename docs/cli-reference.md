@@ -146,6 +146,32 @@ existing tokens do not silently gain new permissions.
   read-edit-write a guessed default; read first. A conflict means reread and reconcile the user's intent. Do not
   overwrite a concurrent edit. Personal memory and deletes are managed only in the UnfoldX web app.
 
+## Topics and auto tasks via CLI
+
+A topic is what the account wants covered; an auto task is a recurring job that picks from it. Both are opt-in
+scopes (`topics:read`/`topics:write`, `schedules:read`/`schedules:write`) and both MCP toolsets default off: add
+`--toolsets core,topics,schedules` when starting `unfoldx-mcp`.
+
+```bash
+unfoldx topics list --json
+unfoldx topics subscribe --topic '认知科学' --description '记忆与注意' --json
+unfoldx topics unsubscribe KEY --json
+
+unfoldx schedules list --json
+unfoldx schedules add --input-json schedule.json --json
+unfoldx schedules edit 12 --state paused --json
+unfoldx schedules runs 12 --json
+unfoldx schedules remove 12 --json
+```
+
+Adding a task records when it next runs; it starts nothing and spends nothing. Every run it later does stays inside
+the account's per-run and per-day caps, and a run that would exceed them comes back on the web like any route card.
+`scope.topic_ids` and `scope.event_ids` must name items the account already follows (`topics list`), or the request
+is refused. Pausing (`--state paused`) is the way to stop it without losing its history; deleting keeps the runs it
+already did in their sessions.
+
+`--input-json` also accepts the same fields as flags; do not mix both in one call.
+
 ## Superfast via CLI
 
 Superfast is a separate job, not a route name in `runs answer`. It must be enabled on the target deployment and

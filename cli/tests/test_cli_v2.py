@@ -518,3 +518,43 @@ def test_tty_superfast_shows_the_held_credits(capsys):
     from unfoldx_cli.output import Emitter
     Emitter(False).result({'job_id': 'sf_123456789012', 'command_id': 'c', 'billing': {'status': 'held', 'credits': 120}})
     assert '已预扣 120 积分' in capsys.readouterr().out
+
+
+def test_topics_list_subscribe_and_unsubscribe(cli, platform):
+    _login(cli)
+    code, out, _ = cli("topics", "list")
+    assert code == 0 and out["data"]["topics"] == []
+    code, out, _ = cli("topics", "subscribe", "--topic", "认知科学", "--description", "记忆与注意")
+    assert code == 0 and out["data"]["topics"][0]["topic"] == "认知科学"
+    code, out, err = cli("topics", "unsubscribe", "t-new")
+    assert code == 0 and out["data"]["topics"] == []
+    assert [p for m, p, _ in platform.requests if p.startswith("/api/v2/topics")][-1] == "/api/v2/topics/subscriptions/t-new"
+
+
+def test_schedules_add_edit_pause_and_remove(cli, platform, tmp_path):
+    _login(cli)
+    body = tmp_path / "schedule.json"
+    body.write_text(json.dumps({
+        "title": "每日选题简报",
+        "frequency": {"kind": "daily", "time": "09:00", "timezone": "Asia/Shanghai"},
+        "scope": {"topic_ids": ["t-agent"], "event_ids": [], "text": ""},
+        "deliverable": {"kind": "brief", "angles": 3, "plan": True, "language": "Chinese", "reply_language": "zh"},
+        "notify": "important"}), encoding="utf-8")
+    code, out, err = cli("schedules", "add", "--input-json", str(body))
+    assert code == 0, (out, err)
+    assert out["data"]["schedule_id"] == 1 and out["data"]["state"] == "active"
+
+    code, out, _ = cli("schedules", "list")
+    assert code == 0 and [row["schedule_id"] for row in out["data"]["schedules"]] == [1]
+
+    code, out, err = cli("schedules", "edit", "1", "--state", "paused")
+    assert code == 0, (out, err)
+    assert out["data"]["state"] == "paused"
+
+    code, out, _ = cli("schedules", "runs", "1")
+    assert code == 0 and out["data"]["runs"]["runs"] == []
+
+    code, out, _ = cli("schedules", "remove", "1")
+    assert code == 0 and out["data"]["deleted"] is True
+    code, out, err = cli("schedules", "show", "1")
+    assert code == 5 and out["error"]["code"] == "not_found"
