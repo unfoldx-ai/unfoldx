@@ -61,7 +61,7 @@ def test_default_server_offers_only_the_core_tools(platform):
 def test_every_tool_declares_object_schemas_and_honest_hints(platform):
     from unfoldx_mcp.contracts import TOOLSETS
     tools = {tool.name: tool for tool in _session(lambda client: client.list_tools(), toolsets=set(TOOLSETS)).tools}
-    assert len(tools) == 27
+    assert len(tools) == 28
     for tool in tools.values():
         assert tool.input_schema["type"] == "object"
         assert tool.output_schema["type"] == "object" and tool.output_schema["oneOf"]
@@ -275,3 +275,17 @@ def test_the_schedules_tool_lists_a_task_it_created(platform):
     assert created.is_error is False and created.structured_content["data"]["schedule_id"] == 1
     listed = _call("unfoldx_schedules", {"method": "list"}, toolsets={"schedules"})
     assert [row["title"] for row in listed.structured_content["data"]["schedules"]] == ["每日选题简报"]
+
+
+def test_publish_tool_prepares_outside_the_web_card(platform):
+    _logged_in(platform)
+    from unfoldx_mcp.contracts import TOOLSETS
+    assert "publish" in set(TOOLSETS)
+    prepared = _call("unfoldx_publish", {"method": "prepare", "run_id": RUN, "platform": "douyin",
+                                         "title": "一个 am｜五个关于爱的词",
+                                         "tags": ["英语单词"]}, toolsets={"publish"})
+    assert prepared.is_error is False, prepared.content
+    intent = prepared.structured_content["data"]
+    assert intent["state"] == "created" and intent["handoff_url"]
+    status = _call("unfoldx_publish", {"method": "status", "intent_id": intent["intent_id"]}, toolsets={"publish"})
+    assert status.structured_content["data"]["intent_id"] == intent["intent_id"]

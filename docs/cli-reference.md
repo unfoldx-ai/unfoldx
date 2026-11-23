@@ -208,3 +208,21 @@ Superfast duration is a soft goal. Completed status includes `duration` with mea
 `target_duration_seconds`, `delta_ratio` and any warning. Human output shows these facts too. The caller can
 review and explicitly submit edited narration; the service does not silently rewrite or fail a film merely
 because it differs from the target. A missing measurement stays null and is never replaced with the target.
+
+## Publishing outside the web card
+
+Preparing a publish does not publish it. `publish prepare` records the film, platform and copy and returns a
+one-time `handoff_url`: the browser extension claims that link, fills the creator page, reads every field back and
+reports what it saw. The last click stays with the person (YouTube and TikTok can be published privately by the
+extension where the platform allows it). Read the result with `publish status`; `unverified` means the extension
+could not read a field back — look before assuming it worked.
+
+```bash
+unfoldx publish prepare RUN --platform douyin --title '…' --desc '…' --tags '["英语单词","词根词缀"]' --json
+unfoldx publish status INTENT --json
+unfoldx publish cancel INTENT --json
+unfoldx works publications RUN --json
+```
+
+`works publications` is the read projection of every platform record for a film: platform, state, link and where the
+record came from (extension, public data, official API or the user pasting a link). It needs `publish:read`.

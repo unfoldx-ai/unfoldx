@@ -34,6 +34,7 @@ class FakePlatform:
                                        "daily_credit_cap": 1000, "approved_last_24h": 600, "daily_remaining": 400,
                                        "window": "rolling_24h", "next_release_at": "2026-11-20T08:00:00Z"},
                         "auto_approve_limit": 300}
+        self.intents: dict[str, dict] = {}
         self.topics: list[dict] = []
         self.schedules: dict[int, dict] = {}
         self.next_schedule_id = 1
@@ -84,6 +85,21 @@ class FakePlatform:
                 "lead_agent": "kai"}
 
     def write(self, method, path, headers, body):
+        if path == "/api/v2/publish-intents":
+            intent_id = f"pi_{len(self.intents):022d}"
+            self.intents[intent_id] = {"intent_id": intent_id, "run_id": body["run_id"], "platform": body["platform"],
+                                       "title": body["title"], "description": body.get("description", ""),
+                                       "tags": body.get("tags") or [], "visibility": "public", "state": "created",
+                                       "detail": {}, "work_url": None,
+                                       "handoff_url": f"https://dev.unfoldx.ai/publish/{intent_id}?t=tok",
+                                       "expires_at": "2026-11-23T13:30:00Z"}
+            return self.envelope(self.intents[intent_id], status=201)
+        if path.endswith("/cancel") and path.startswith("/api/v2/publish-intents/"):
+            intent = self.intents.get(path.split("/")[4])
+            if intent is None:
+                return self.fail(404, "not_found", "not_found")
+            intent["state"] = "abandoned"
+            return self.envelope(intent)
         if path == "/api/v2/topics/subscriptions":
             self.topics.append({"key": "t-new", "topic": body["topic"], "description": body.get("description") or "",
                                 "cards": 0, "starred": 0, "new": 0, "updated_at": None})
@@ -183,6 +199,13 @@ class FakePlatform:
             return self.envelope(self.run())
         if path == f"/api/v2/runs/{RUN}/questions":
             return self.envelope({"questions": [self.question()]})
+        if path.startswith("/api/v2/publish-intents/"):
+            intent = self.intents.get(path.split("/")[4])
+            if intent is None:
+                return self.fail(404, "not_found", "not_found")
+            return self.envelope(intent)
+        if path == f"/api/v2/runs/{RUN}/publications":
+            return self.envelope({"run_id": RUN, "publications": []})
         if path == "/api/v2/topics":
             return self.envelope(self.topics_view())
         if path.startswith("/api/v2/topics/subscriptions/") and method == "DELETE":

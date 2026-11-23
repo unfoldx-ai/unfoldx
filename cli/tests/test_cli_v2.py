@@ -558,3 +558,24 @@ def test_schedules_add_edit_pause_and_remove(cli, platform, tmp_path):
     assert code == 0 and out["data"]["deleted"] is True
     code, out, err = cli("schedules", "show", "1")
     assert code == 5 and out["error"]["code"] == "not_found"
+
+
+def test_publish_prepare_status_and_cancel(cli, platform):
+    _login(cli)
+    code, out, err = cli("publish", "prepare", "--run-id", RUN, "--platform", "douyin",
+                         "--title", "一个 am｜五个关于爱的词", "--desc", "一个词根 am-，拆出五个词",
+                         "--tags", '["英语单词","词根词缀"]')
+    assert code == 0, (out, err)
+    intent = out["data"]
+    assert intent["state"] == "created" and intent["handoff_url"].startswith("https://")
+    code, out, _ = cli("publish", "status", intent["intent_id"])
+    assert code == 0 and out["data"]["intent_id"] == intent["intent_id"]
+    code, out, _ = cli("publish", "cancel", intent["intent_id"])
+    assert code == 0 and out["data"]["state"] == "abandoned"
+
+
+def test_works_publications_reads_the_links(cli, platform):
+    _login(cli)
+    code, out, err = cli("works", "publications", RUN)
+    assert code == 0, (out, err)
+    assert out["data"] == {"run_id": RUN, "publications": []}
