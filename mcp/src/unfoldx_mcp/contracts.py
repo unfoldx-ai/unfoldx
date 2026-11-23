@@ -104,7 +104,7 @@ def description(tool_name, *, read_only=False):
         op = OPERATIONS[ops['']][2]
         text = spec.get('description') or op.get('description') or op['summary']
         return text + (' Required scope: ' + op['x-scope'] if op.get('x-scope') else '')
-    lines = [spec['description'], 'method:']
+    lines = ['method:'] if read_only else [spec['description'], 'method:']
     for method, operation_id in ops.items():
         op = OPERATIONS[operation_id][2]
         required = [name for name in input_schema(op)['required']]

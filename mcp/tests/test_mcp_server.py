@@ -292,6 +292,15 @@ def test_schedules_rejects_an_incomplete_nested_object_before_creating(platform,
     assert listed.structured_content["data"]["schedules"] == []
 
 
+def test_schedules_rejects_a_brief_with_too_many_angles(platform):
+    _logged_in(platform)
+    result = _call("unfoldx_schedules", {**SCHEDULE, "deliverable": {**SCHEDULE["deliverable"], "angles": 6}},
+                   toolsets={"schedules"})
+    assert result.is_error and result.structured_content["error"]["code"] == "invalid_arguments"
+    listed = _call("unfoldx_schedules", {"method": "list"}, toolsets={"schedules"})
+    assert listed.structured_content["data"]["schedules"] == []
+
+
 def test_readonly_can_read_topics_and_schedules_without_exposing_their_writes(platform):
     _logged_in(platform)
     options = {"toolsets": {"topics", "schedules"}, "read_only": True}
