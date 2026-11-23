@@ -172,6 +172,10 @@ already did in their sessions.
 
 `--input-json` also accepts the same fields as flags; do not mix both in one call.
 
+Schedule scope takes `topic_ids`, `event_ids`, and `text`; use empty arrays or an empty string for unused fields.
+A brief deliverable includes `kind`, `angles`, `plan`, `language`, and `reply_language`. Video and publish
+deliverables use `route` in place of `plan`, and a publish deliverable also includes `target`.
+
 ## Superfast via CLI
 
 Superfast is a separate job, not a route name in `runs answer`. It must be enabled on the target deployment and

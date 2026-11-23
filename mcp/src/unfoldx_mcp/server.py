@@ -31,7 +31,7 @@ from unfoldx_cli.redact import redact
 
 from . import __version__
 from .contracts import (DEFAULT_TOOLSETS, TOOLS, TOOLSETS, description, hints, operation_for, operation_input_schema,
-                        operation_output_schema, output_schema, tool_input_schema)
+                        operation_output_schema, operations, output_schema, tool_input_schema)
 
 INSTRUCTIONS = """UnfoldX turns a topic or material into an explainer video through its main agent.
 A run is one message to that agent. Start one with unfoldx_run_submit (upload local files first with
@@ -86,22 +86,29 @@ class UnfoldxServer(MCPServer):
         for tool in tools:
             tool.output_schema = output_schema(tool.name)
             tool.input_schema = {**tool.input_schema, 'additionalProperties': False}
-        tools += [Tool(name=name, description=description(name), input_schema=tool_input_schema(name),
-                       output_schema=output_schema(name),
-                       annotations=ToolAnnotations(open_world_hint=False, **hints(name))) for name in GENERATED]
+        tools += [
+            Tool(name=name, description=description(name, read_only=self.read_only),
+                 input_schema=tool_input_schema(name, read_only=self.read_only),
+                 output_schema=output_schema(name, read_only=self.read_only),
+                 annotations=ToolAnnotations(open_world_hint=False, **hints(name, read_only=self.read_only)))
+            for name in GENERATED if operations(name, read_only=self.read_only)
+        ]
         return [tool for tool in tools
                 if TOOLS[tool.name]['toolset'] in self.enabled_toolsets
                 and not (self.read_only and not tool.annotations.read_only_hint)]
 
     async def call_tool(self, name, arguments, context=None):
         offered = {tool.name: tool for tool in await self.list_tools()}
-        if name in TOOLS and name not in offered:
+        method = arguments.get('method') if isinstance(arguments, dict) else None
+        blocked_method = (self.read_only and name in GENERATED and isinstance(method, str)
+                          and method in operations(name) and method not in operations(name, read_only=True))
+        if name in TOOLS and (name not in offered or blocked_method):
             return _tool_error(UnfoldxError('auth_failed', 'This tool is disabled by the server toolsets/read-only configuration.',
                                             code='tool_disabled'))
         expected = None
         try:
             if name in GENERATED:
-                Draft202012Validator(tool_input_schema(name)).validate(arguments)
+                Draft202012Validator(offered[name].input_schema).validate(arguments)
                 operation_id, values = operation_for(name, arguments)
                 Draft202012Validator(operation_input_schema(operation_id)).validate(values)
                 expected = operation_output_schema(operation_id)
