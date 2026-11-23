@@ -103,3 +103,6 @@ Use `--instruction` with `--parent-job-id` to edit a film in one sentence; only 
 Treat the superfast duration as a soft goal. Inspect `duration` and its warning before delivery; disclose a
 significant deviation with measured and target seconds. Use an explicit narration revision when the user’s goal
 calls for it; never describe the requested duration as measured or assume the service silently shortened the film.
+
+Publishing to 抖音 / 小红书 / B站 / 视频号 is not something this CLI does: hand the film to the user's browser
+extension and follow `publish-with-extension` (skills/publish-with-extension/SKILL.md).
