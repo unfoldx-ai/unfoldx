@@ -218,7 +218,7 @@ extension where the platform allows it). Read the result with `publish status`; 
 could not read a field back — look before assuming it worked.
 
 ```bash
-unfoldx publish prepare RUN --platform douyin --title '…' --desc '…' --tags '["英语单词","词根词缀"]' --json
+unfoldx publish prepare --run-id RUN --platform douyin --title '…' --description '…' --tags '["英语单词","词根词缀"]' --json
 unfoldx publish status INTENT --json
 unfoldx publish cancel INTENT --json
 unfoldx works publications RUN --json
