@@ -45,8 +45,7 @@ and validates its actual response schema from `unfoldx_cli/openapi.json`, packag
 the tool adapter does not maintain a second response model. Workspace listing supports
 `limit`, `cursor`, `query` and `state`; keep filters unchanged when following `next_cursor`.
 
-Tools that do several things of one kind take `method`; reads and writes never share a tool, so `--read-only` and
-the tool annotations stay exact. By default the server offers the 11 `core` tools:
+Tools that do several things of one kind take `method`. In `--read-only` mode, mixed tools expose their read methods. By default the server offers the 11 `core` tools:
 
 | Tool | Does |
 | --- | --- |
@@ -101,7 +100,7 @@ same key budget as route cards (`billing`: held, then settled or refunded); abov
 `approval_required` with the key settings page. Poll `unfoldx_superfast_get` with a bounded interval. No automatic
 fallback from ordinary runs to superfast.
 
-`--read-only` both removes mutating tools from discovery and rejects direct calls to them. This is a host
+`--read-only` removes write-only tools and mutating methods from discovery and rejects direct calls to them. This is a host
 configuration boundary in addition to server-side credential scopes, not a substitute for authorization.
 
 Superfast status exposes `duration`: measured seconds, target seconds and delta. A warning is a quality fact,

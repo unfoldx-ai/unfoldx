@@ -822,7 +822,7 @@ wheels = [
 
 [[package]]
 name = "unfoldx"
-version = "0.9.0"
+version = "0.10.1"
 source = { editable = "../cli" }
 
 [package.metadata]
@@ -831,7 +831,7 @@ provides-extras = ["keychain"]
 
 [[package]]
 name = "unfoldx-mcp"
-version = "0.9.0"
+version = "0.10.1"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },

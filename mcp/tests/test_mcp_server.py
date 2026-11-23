@@ -265,16 +265,54 @@ def test_topics_and_schedules_are_their_own_toolsets(platform):
     assert "unfoldx_run_submit" not in names
 
 
+SCHEDULE = {
+    "method": "create", "title": "每日选题简报",
+    "frequency": {"kind": "daily", "time": "09:00", "timezone": "Asia/Shanghai"},
+    "scope": {"topic_ids": ["t-agent"], "event_ids": [], "text": ""},
+    "deliverable": {"kind": "brief", "angles": 3, "plan": True, "language": "Chinese", "reply_language": "zh"},
+    "notify": "important",
+}
+
+
 def test_the_schedules_tool_lists_a_task_it_created(platform):
     _logged_in(platform)
-    created = _call("unfoldx_schedules", {"method": "create", "title": "每日选题简报",
-                                          "frequency": {"kind": "daily", "time": "09:00", "timezone": "Asia/Shanghai"},
-                                          "scope": {"topic_ids": ["t-agent"]},
-                                          "deliverable": {"kind": "brief", "angles": 3},
-                                          "notify": "important"}, toolsets={"schedules"})
+    created = _call("unfoldx_schedules", SCHEDULE, toolsets={"schedules"})
     assert created.is_error is False and created.structured_content["data"]["schedule_id"] == 1
     listed = _call("unfoldx_schedules", {"method": "list"}, toolsets={"schedules"})
     assert [row["title"] for row in listed.structured_content["data"]["schedules"]] == ["每日选题简报"]
+
+
+@pytest.mark.parametrize("field,required", [("scope", "event_ids"), ("deliverable", "reply_language")])
+def test_schedules_rejects_an_incomplete_nested_object_before_creating(platform, field, required):
+    _logged_in(platform)
+    fields = {key: value for key, value in SCHEDULE[field].items() if key != required}
+    result = _call("unfoldx_schedules", {**SCHEDULE, field: fields}, toolsets={"schedules"})
+    assert result.is_error and result.structured_content["error"]["code"] == "invalid_arguments"
+    listed = _call("unfoldx_schedules", {"method": "list"}, toolsets={"schedules"})
+    assert listed.structured_content["data"]["schedules"] == []
+
+
+def test_schedules_rejects_a_brief_with_too_many_angles(platform):
+    _logged_in(platform)
+    result = _call("unfoldx_schedules", {**SCHEDULE, "deliverable": {**SCHEDULE["deliverable"], "angles": 6}},
+                   toolsets={"schedules"})
+    assert result.is_error and result.structured_content["error"]["code"] == "invalid_arguments"
+    listed = _call("unfoldx_schedules", {"method": "list"}, toolsets={"schedules"})
+    assert listed.structured_content["data"]["schedules"] == []
+
+
+def test_readonly_can_read_topics_and_schedules_without_exposing_their_writes(platform):
+    _logged_in(platform)
+    options = {"toolsets": {"topics", "schedules"}, "read_only": True}
+    tools = {tool.name: tool for tool in _session(lambda client: client.list_tools(), **options).tools}
+    assert tools["unfoldx_topics"].input_schema["properties"]["method"]["enum"] == ["list"]
+    assert tools["unfoldx_schedules"].input_schema["properties"]["method"]["enum"] == ["list", "get", "runs"]
+    for name in tools:
+        assert tools[name].annotations.read_only_hint is True
+        assert _call(name, {"method": "list"}, **options).structured_content["ok"] is True
+    refused = _call("unfoldx_schedules", SCHEDULE, **options)
+    assert refused.is_error and refused.structured_content["error"]["code"] == "tool_disabled"
+    assert _call("unfoldx_schedules", {"method": "list"}, **options).structured_content["data"]["schedules"] == []
 
 
 def test_publish_tool_prepares_outside_the_web_card(platform):

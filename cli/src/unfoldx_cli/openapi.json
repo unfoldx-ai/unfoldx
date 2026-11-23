@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "UnfoldX public API",
-    "version": "2.9.0",
+    "version": "2.9.1",
     "summary": "Delegate explainer videos to the UnfoldX main agent and follow them to the finished film.",
     "description": "The single contract for the `unfoldx` CLI, the `unfoldx-mcp` server and any other client.\n\n* Every response is the `unfoldx.v2` envelope: `data` when `ok` is true, `error` otherwise.\n  Responses carry `Cache-Control: no-store`.\n* `error.type` is a closed set that clients map to exit codes; `error.code` is the precise reason.\n* Public ids only: workspace ids, `run_…`, `<run_id>.video|cover`, `mat_…`, `cred_…`.\n* A workspace is one main-agent conversation; a run is one message to it.\n* Writes run through the same services as the web. `POST /v2/runs` needs an `Idempotency-Key`\n  (the client's command id): the same key and body return the same run, a changed body is 409.\n* A route card is answered on the user's behalf only within the credential's budget; above it the\n  answer is `needs_input/approval_required` with the `approval_url` where the user confirms.\n* Publishing requires explicit publish:confirm scope and a current publish card.\n* Clients name themselves on every request with `X-Unfoldx-Client` (`cli` or `mcp`,\n  `#/components/parameters/UnfoldxClient`).\n"
   },
@@ -4356,84 +4356,22 @@
                   },
                   "frequency": {
                     "type": "object",
-                    "required": [
-                      "kind",
-                      "time",
-                      "timezone"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "enum": [
-                          "daily",
-                          "weekly"
-                        ]
-                      },
-                      "time": {
-                        "type": "string"
-                      },
-                      "weekday": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 7
-                      },
-                      "timezone": {
-                        "type": "string"
-                      }
-                    }
+                    "$ref": "#/components/schemas/ScheduleFrequencyInput"
                   },
                   "scope": {
                     "type": "object",
-                    "properties": {
-                      "topic_ids": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "event_ids": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "text": {
-                        "type": "string"
-                      }
-                    }
+                    "$ref": "#/components/schemas/ScheduleScopeInput"
                   },
                   "deliverable": {
                     "type": "object",
-                    "required": [
-                      "kind"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "enum": [
-                          "brief",
-                          "video"
-                        ]
-                      },
-                      "angles": {
-                        "type": "integer"
-                      },
-                      "plan": {
-                        "type": "boolean"
-                      },
-                      "route": {
-                        "type": "string"
-                      },
-                      "language": {
-                        "type": "string"
-                      },
-                      "reply_language": {
-                        "type": "string"
-                      }
-                    }
+                    "$ref": "#/components/schemas/ScheduleDeliverableInput"
                   },
                   "notify": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "important",
+                      "every_run"
+                    ]
                   },
                   "daily_credit_cap": {
                     "type": "integer"
@@ -4789,84 +4727,22 @@
                   },
                   "frequency": {
                     "type": "object",
-                    "required": [
-                      "kind",
-                      "time",
-                      "timezone"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "enum": [
-                          "daily",
-                          "weekly"
-                        ]
-                      },
-                      "time": {
-                        "type": "string"
-                      },
-                      "weekday": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 7
-                      },
-                      "timezone": {
-                        "type": "string"
-                      }
-                    }
+                    "$ref": "#/components/schemas/ScheduleFrequencyInput"
                   },
                   "scope": {
                     "type": "object",
-                    "properties": {
-                      "topic_ids": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "event_ids": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "text": {
-                        "type": "string"
-                      }
-                    }
+                    "$ref": "#/components/schemas/ScheduleScopeInput"
                   },
                   "deliverable": {
                     "type": "object",
-                    "required": [
-                      "kind"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "enum": [
-                          "brief",
-                          "video"
-                        ]
-                      },
-                      "angles": {
-                        "type": "integer"
-                      },
-                      "plan": {
-                        "type": "boolean"
-                      },
-                      "route": {
-                        "type": "string"
-                      },
-                      "language": {
-                        "type": "string"
-                      },
-                      "reply_language": {
-                        "type": "string"
-                      }
-                    }
+                    "$ref": "#/components/schemas/ScheduleDeliverableInput"
                   },
                   "notify": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "important",
+                      "every_run"
+                    ]
                   },
                   "daily_credit_cap": {
                     "type": "integer"
@@ -7408,6 +7284,269 @@
             "type": "string"
           }
         }
+      },
+      "ScheduleScopeInput": {
+        "type": "object",
+        "properties": {
+          "topic_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "event_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic_ids",
+          "event_ids",
+          "text"
+        ],
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "properties": {
+              "topic_ids": {
+                "minItems": 1
+              }
+            }
+          },
+          {
+            "properties": {
+              "event_ids": {
+                "minItems": 1
+              }
+            }
+          },
+          {
+            "properties": {
+              "text": {
+                "pattern": "\\S"
+              }
+            }
+          }
+        ]
+      },
+      "ScheduleFrequencyInput": {
+        "type": "object",
+        "required": [
+          "kind",
+          "time",
+          "timezone"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly"
+            ]
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          },
+          "weekday": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "weekly"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "weekday"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "daily"
+                }
+              }
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "weekday"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ScheduleDeliverableInput": {
+        "type": "object",
+        "required": [
+          "kind",
+          "angles",
+          "language",
+          "reply_language"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "video",
+              "publish"
+            ]
+          },
+          "angles": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "plan": {
+            "type": "boolean"
+          },
+          "route": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "Chinese",
+              "English"
+            ]
+          },
+          "reply_language": {
+            "type": "string",
+            "enum": [
+              "zh",
+              "en"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "douyin",
+              "xiaohongshu",
+              "bilibili",
+              "channels"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "brief"
+              },
+              "angles": {
+                "maximum": 5
+              }
+            },
+            "required": [
+              "plan"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "route"
+                  ]
+                },
+                {
+                  "required": [
+                    "target"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "video"
+              },
+              "route": {
+                "enum": [
+                  "auto",
+                  "template",
+                  "agentic"
+                ]
+              },
+              "angles": {
+                "maximum": 3
+              }
+            },
+            "required": [
+              "route"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "plan"
+                  ]
+                },
+                {
+                  "required": [
+                    "target"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "publish"
+              },
+              "route": {
+                "enum": [
+                  "auto",
+                  "template"
+                ]
+              },
+              "angles": {
+                "maximum": 3
+              }
+            },
+            "required": [
+              "route",
+              "target"
+            ],
+            "not": {
+              "required": [
+                "plan"
+              ]
+            }
+          }
+        ]
       }
     }
   },

@@ -533,21 +533,22 @@ def test_topics_list_subscribe_and_unsubscribe(cli, platform):
 
 def test_schedules_add_edit_pause_and_remove(cli, platform, tmp_path):
     _login(cli)
-    body = tmp_path / "schedule.json"
-    body.write_text(json.dumps({
-        "title": "每日选题简报",
-        "frequency": {"kind": "daily", "time": "09:00", "timezone": "Asia/Shanghai"},
-        "scope": {"topic_ids": ["t-agent"], "event_ids": [], "text": ""},
-        "deliverable": {"kind": "brief", "angles": 3, "plan": True, "language": "Chinese", "reply_language": "zh"},
-        "notify": "important"}), encoding="utf-8")
-    code, out, err = cli("schedules", "add", "--input-json", str(body))
+    frequency = {"kind": "daily", "time": "09:00", "timezone": "Asia/Shanghai"}
+    scope = {"topic_ids": ["t-agent"], "event_ids": [], "text": ""}
+    deliverable = {"kind": "brief", "angles": 3, "plan": True, "language": "Chinese", "reply_language": "zh"}
+    code, out, err = cli("schedules", "add", "--title", "每日选题简报", "--frequency", json.dumps(frequency),
+                         "--scope", json.dumps(scope), "--deliverable", json.dumps(deliverable), "--notify", "important")
     assert code == 0, (out, err)
     assert out["data"]["schedule_id"] == 1 and out["data"]["state"] == "active"
+    assert out["data"]["frequency"] == frequency and out["data"]["scope"] == scope
+    assert out["data"]["deliverable"] == deliverable
 
     code, out, _ = cli("schedules", "list")
     assert code == 0 and [row["schedule_id"] for row in out["data"]["schedules"]] == [1]
 
-    code, out, err = cli("schedules", "edit", "1", "--state", "paused")
+    changes = tmp_path / "schedule-edit.json"
+    changes.write_text(json.dumps({"state": "paused"}), encoding="utf-8")
+    code, out, err = cli("schedules", "edit", "1", "--input-json", str(changes))
     assert code == 0, (out, err)
     assert out["data"]["state"] == "paused"
 
